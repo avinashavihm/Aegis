@@ -1,0 +1,24 @@
+[project]
+name = "aegis-service"
+version = "0.1.0"
+description = "FastAPI Backend Service for Agentic Ops with RBAC"
+authors = [
+    {name = "User", email = "user@example.com"},
+]
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "psycopg2-binary",
+    "python-jose[cryptography]",
+    "passlib[bcrypt]",
+    "bcrypt==3.2.2",
+    "python-multipart",
+]
+requires-python = ">=3.9"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
