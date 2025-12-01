@@ -39,11 +39,26 @@ python -c "from src.config import set_api_url; set_api_url('http://your-api:8000
 
 ### Global Options
 
-- `--output`, `-o`: Output format. Options: `table` (default), `json`, `text`.
+- `--output`, `-o`: Output format. Options: `table` (default), `json`, `yaml`, `text`.
 
 Example:
 ```bash
-aegis --output json user ls
+aegis get users --output yaml
+```
+
+### Unified Get Command
+The `get` command is the primary way to retrieve resources. It supports singular/plural forms and ID/name lookups.
+
+```bash
+# List resources
+aegis get users
+aegis get roles
+aegis get workspaces (or 'ws')
+
+# Get specific resource
+aegis get user yaswanth
+aegis get role admin
+aegis get workspace my-workspace
 ```
 
 ### User Management
@@ -53,31 +68,36 @@ aegis user create <username> --email <email> -p <password> --name "Full Name"
 
 # Login (saves token to ~/.aegis/config)
 aegis login --username <username> -p <password>
-# Or interactive:
-aegis login
 
 # View current user
-aegis user me
-
-# List users
-aegis user ls
+aegis get user
 ```
 
 ### Workspace Management
 ```bash
 # Create a workspace (auto-sets as current context)
-aegis workspace create "My Workspace" --slug my-workspace
+aegis workspace create "My Workspace"
+# Note: Name is automatically slugified (e.g., "My Workspace" -> "my-workspace")
 
 # List workspaces
-aegis workspace ls
+aegis get ws
 
 # Set current workspace context
 aegis workspace set my-workspace
 
 # List workspace members
-aegis workspace members -w my-workspace
-# Or use current context:
 aegis workspace members
+```
+
+### Role Management
+Roles use professional naming conventions: `admin`, `editor`, `viewer`, `deployer`.
+
+```bash
+# List roles
+aegis get roles
+
+# View role details and policy
+aegis get role admin -o yaml
 ```
 
 ## Example Workflow

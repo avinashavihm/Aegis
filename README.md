@@ -42,8 +42,8 @@ Complete platform for managing users, workspaces, and RBAC using PostgreSQL Row 
 ### 3. **Aegis CLI** (`aegis-cli/`)
 - **Typer** command-line interface
 - **Rich** terminal UI
-- HTTP client (connects to Service API)
-- User and workspace management commands
+- Unified `get` command structure
+- Professional role management
 
 ## Quick Start
 
@@ -67,15 +67,15 @@ uv pip install -e .
 
 # Register and login
 aegis user create john --email john@example.com -p secret123
-aegis user login
+aegis login
 
 # Create workspace
-aegis workspace create "Production" --slug prod
+aegis workspace create "Production"
 
 # List everything
-aegis user ls
-aegis workspace ls
-aegis workspace members
+aegis get users
+aegis get ws
+aegis get roles
 ```
 
 ## Environment Variables
@@ -129,10 +129,10 @@ Base URL: `http://localhost:8000`
 
 | Role | Permissions |
 |------|-------------|
-| **Owner** | Full control (update, delete, manage members) |
-| **Admin** | Manage members, update workspace |
-| **Member** | Use workspace |
-| **Viewer** | Read-only access |
+| **admin** | Full administrative access to workspace, members, and data |
+| **editor** | Can manage workspace settings and members |
+| **viewer** | Read-only access to workspace and members |
+| **deployer** | Can deploy and manage deployments |
 
 ## Development
 
