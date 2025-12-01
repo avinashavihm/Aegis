@@ -47,3 +47,23 @@ class TemplateNotFoundError(HTTPException):
             detail=f"Template with id {template_id} not found"
         )
 
+
+class ExecutionError(HTTPException):
+    """Raised when execution fails"""
+    def __init__(self, detail: str, execution_id: Optional[str] = None):
+        super().__init__(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=detail
+        )
+        self.execution_id = execution_id
+
+
+class RetryExhaustedError(HTTPException):
+    """Raised when all retry attempts are exhausted"""
+    def __init__(self, detail: str, retry_count: int):
+        super().__init__(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"{detail} (retries exhausted after {retry_count} attempts)"
+        )
+        self.retry_count = retry_count
+

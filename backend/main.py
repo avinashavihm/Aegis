@@ -14,7 +14,8 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from backend.database import create_db_and_tables
-from backend.routers import workflows, agents, executions, templates
+from backend.routers import workflows, agents, executions, templates, monitoring, webhooks
+from backend.routers import websocket_monitoring
 from backend.config import settings
 from backend.middleware import RequestIDMiddleware, LoggingMiddleware
 from backend.exceptions import (
@@ -25,10 +26,11 @@ from backend.exceptions import (
     TemplateNotFoundError
 )
 
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.log_level),
-    format=settings.log_format
+# Configure structured logging
+from backend.services.logging_service import setup_structured_logging
+setup_structured_logging(
+    log_level=settings.log_level,
+    use_json=True  # Use JSON logging for structured logs
 )
 logger = logging.getLogger(__name__)
 
@@ -46,9 +48,7 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Add middleware (order matters - RequestID first, then Logging, then CORS)
-app.add_middleware(RequestIDMiddleware)
-app.add_middleware(LoggingMiddleware)
+# Add middleware (order matters - CORS should be early to handle preflight)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -56,6 +56,8 @@ app.add_middleware(
     allow_methods=settings.cors_allow_methods,
     allow_headers=settings.cors_allow_headers,
 )
+app.add_middleware(RequestIDMiddleware)
+app.add_middleware(LoggingMiddleware)
 
 # Global exception handlers
 @app.exception_handler(WorkflowNotFoundError)
@@ -144,6 +146,9 @@ app.include_router(workflows.router, prefix=settings.api_prefix)
 app.include_router(agents.router, prefix=settings.api_prefix)
 app.include_router(executions.router, prefix=settings.api_prefix)
 app.include_router(templates.router, prefix=settings.api_prefix)
+app.include_router(monitoring.router, prefix=settings.api_prefix)
+app.include_router(websocket_monitoring.router)
+app.include_router(webhooks.router, prefix=settings.api_prefix)
 
 
 @app.on_event("startup")

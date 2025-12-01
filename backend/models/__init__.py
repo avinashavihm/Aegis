@@ -50,6 +50,21 @@ class AgentStatus(str, Enum):
     MAINTENANCE = "maintenance"
 
 
+class CapabilityType(str, Enum):
+    """Agent capability type enum"""
+    DATA_PROCESSING = "data_processing"
+    API_INTEGRATION = "api_integration"
+    FILE_OPERATIONS = "file_operations"
+    DATABASE_OPERATIONS = "database_operations"
+    ML_AI = "ml_ai"
+    WEB_SCRAPING = "web_scraping"
+    COMMUNICATION = "communication"
+    SCHEDULING = "scheduling"
+    MONITORING = "monitoring"
+    SECURITY = "security"
+    CUSTOM = "custom"
+
+
 class Agent(SQLModel, table=True):
     """Agent model"""
     __tablename__ = "agent"
@@ -63,6 +78,22 @@ class Agent(SQLModel, table=True):
         sa_column=Column(JSON, nullable=True)
     )
     agent_capabilities: Optional[List[str]] = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True)
+    )
+    capability_config: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True)
+    )
+    resource_limits: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True)
+    )
+    input_schema: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True)
+    )
+    output_schema: Optional[Dict[str, Any]] = Field(
         default=None,
         sa_column=Column(JSON, nullable=True)
     )
@@ -122,6 +153,19 @@ class ExecutionStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
+    PAUSED = "paused"
+
+
+class ExecutionMode(str, Enum):
+    """Execution mode enum"""
+    SYNC = "sync"
+    ASYNC = "async"
+    PARALLEL = "parallel"
+    CONDITIONAL = "conditional"
+    LOOP = "loop"
+    SCHEDULED = "scheduled"
+    EVENT_DRIVEN = "event_driven"
 
 
 class WorkflowExecution(SQLModel, table=True):
@@ -134,6 +178,15 @@ class WorkflowExecution(SQLModel, table=True):
         default=ExecutionStatus.PENDING.value,
         sa_column=Column(Text, default=ExecutionStatus.PENDING.value)
     )
+    execution_mode: str = Field(
+        default=ExecutionMode.SYNC.value,
+        sa_column=Column(Text, default=ExecutionMode.SYNC.value)
+    )
+    execution_context: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True)
+    )
+    priority: int = Field(default=0, description="Execution priority (higher = more priority)")
     started_at: Optional[datetime] = Field(
         default=None,
         sa_column=Column(DateTime, nullable=True)
@@ -146,6 +199,12 @@ class WorkflowExecution(SQLModel, table=True):
         default=None,
         sa_column=Column(Text, nullable=True)
     )
+    error_details: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True)
+    )
+    retry_count: int = Field(default=0)
+    max_retries: int = Field(default=3)
     created_at: datetime = Field(
         default_factory=datetime.utcnow,
         sa_column=Column(DateTime, default=datetime.utcnow)
@@ -166,6 +225,8 @@ class WorkflowExecution(SQLModel, table=True):
         Index("idx_workflow_execution_workflow_id", "workflow_id"),
         Index("idx_workflow_execution_status", "status"),
         Index("idx_workflow_execution_started_at", "started_at"),
+        Index("idx_workflow_execution_priority", "priority"),
+        Index("idx_workflow_execution_mode", "execution_mode"),
     )
 
 
@@ -192,6 +253,12 @@ class AgentExecution(SQLModel, table=True):
         default=None,
         sa_column=Column(Text, nullable=True)
     )
+    error_message: Optional[str] = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True)
+    )
+    retry_count: int = Field(default=0)
+    duration_ms: Optional[int] = Field(default=None)
     created_at: datetime = Field(
         default_factory=datetime.utcnow,
         sa_column=Column(DateTime, default=datetime.utcnow)

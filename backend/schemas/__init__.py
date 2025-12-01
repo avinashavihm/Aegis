@@ -13,6 +13,22 @@ class AgentRole(str, Enum):
     EXECUTOR = "executor"
 
 
+# Capability Type enum
+class CapabilityType(str, Enum):
+    """Agent capability type enum"""
+    DATA_PROCESSING = "data_processing"
+    API_INTEGRATION = "api_integration"
+    FILE_OPERATIONS = "file_operations"
+    DATABASE_OPERATIONS = "database_operations"
+    ML_AI = "ml_ai"
+    WEB_SCRAPING = "web_scraping"
+    COMMUNICATION = "communication"
+    SCHEDULING = "scheduling"
+    MONITORING = "monitoring"
+    SECURITY = "security"
+    CUSTOM = "custom"
+
+
 # Workflow Schemas
 class WorkflowCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
@@ -63,6 +79,10 @@ class AgentCreate(BaseModel):
     role: str  # planner, retriever, evaluator, executor
     agent_properties: Optional[Dict[str, Any]] = None
     agent_capabilities: Optional[List[str]] = None
+    capability_config: Optional[Dict[str, Any]] = None
+    resource_limits: Optional[Dict[str, Any]] = None
+    input_schema: Optional[Dict[str, Any]] = None
+    output_schema: Optional[Dict[str, Any]] = None
     agent_status: Optional[str] = None
     
     @field_validator("name")
@@ -100,6 +120,10 @@ class AgentUpdate(BaseModel):
     role: Optional[str] = None
     agent_properties: Optional[Dict[str, Any]] = None
     agent_capabilities: Optional[List[str]] = None
+    capability_config: Optional[Dict[str, Any]] = None
+    resource_limits: Optional[Dict[str, Any]] = None
+    input_schema: Optional[Dict[str, Any]] = None
+    output_schema: Optional[Dict[str, Any]] = None
     agent_status: Optional[str] = None
     
     @field_validator("name")
@@ -141,6 +165,10 @@ class AgentResponse(BaseModel):
     role: str
     agent_properties: Optional[Dict[str, Any]] = None
     agent_capabilities: Optional[List[str]] = None
+    capability_config: Optional[Dict[str, Any]] = None
+    resource_limits: Optional[Dict[str, Any]] = None
+    input_schema: Optional[Dict[str, Any]] = None
+    output_schema: Optional[Dict[str, Any]] = None
     agent_status: str
     created_at: datetime
     updated_at: datetime
@@ -202,6 +230,20 @@ class ExecutionStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
+    PAUSED = "paused"
+
+
+# Execution Mode enum
+class ExecutionMode(str, Enum):
+    """Execution mode enum"""
+    SYNC = "sync"
+    ASYNC = "async"
+    PARALLEL = "parallel"
+    CONDITIONAL = "conditional"
+    LOOP = "loop"
+    SCHEDULED = "scheduled"
+    EVENT_DRIVEN = "event_driven"
 
 
 # Execution Schemas
@@ -209,14 +251,28 @@ class WorkflowExecutionResponse(BaseModel):
     id: str
     workflow_id: str
     status: str
+    execution_mode: str
+    execution_context: Optional[Dict[str, Any]] = None
+    priority: int = 0
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     logs: Optional[str] = None
+    error_details: Optional[Dict[str, Any]] = None
+    retry_count: int = 0
+    max_retries: int = 3
     created_at: datetime
     updated_at: datetime
     
     class Config:
         from_attributes = True
+
+
+class WorkflowExecutionCreate(BaseModel):
+    """Schema for creating a workflow execution"""
+    execution_mode: Optional[str] = ExecutionMode.SYNC.value
+    execution_context: Optional[Dict[str, Any]] = None
+    priority: int = 0
+    max_retries: int = 3
 
 
 class AgentExecutionResponse(BaseModel):
@@ -227,6 +283,9 @@ class AgentExecutionResponse(BaseModel):
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     output: Optional[str] = None
+    error_message: Optional[str] = None
+    retry_count: int = 0
+    duration_ms: Optional[int] = None
     created_at: datetime
     updated_at: datetime
     
