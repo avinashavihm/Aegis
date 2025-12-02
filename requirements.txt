@@ -1,0 +1,27 @@
+# Core LLM dependencies
+litellm>=1.55.0
+openai>=1.52.0
+
+# CLI and UI
+rich>=13.0.0
+click>=8.0.0
+prompt-toolkit>=3.0.0
+
+# Data handling
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+tiktoken>=0.5.0
+httpx>=0.25.0
+
+# Utilities
+tenacity>=8.2.0
+duckduckgo-search>=6.0.0
+
+# Note: grpcio is a dependency of litellm
+# If you encounter build errors, try:
+# 1. Use Python 3.11 or 3.12 instead of 3.14
+# 2. Install grpcio separately: pip install grpcio --only-binary :all:
+# 3. See INSTALL.md for more troubleshooting tips
+
