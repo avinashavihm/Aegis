@@ -85,13 +85,22 @@ def list_teams(
 
         from src.utils import print_output, current_output_format, OutputFormat
         
-        # For structured formats (JSON/YAML), remove the marker column
+        # For structured formats (JSON/YAML), remove IDs, slugs, and marker column
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
+            clean_teams = []
             for t in teams:
-                t.pop("", None)
+                # Convert comma-separated strings back to lists
+                team_roles_list = [r.strip() for r in t.get("team_roles", "").split(",") if r.strip()] if isinstance(t.get("team_roles"), str) else t.get("team_roles", [])
+                members_list = [m.strip() for m in t.get("members", "").split(",") if m.strip()] if isinstance(t.get("members"), str) else t.get("members", [])
+                
+                clean_t = {
+                    "name": t["name"],
+                    "team_roles": team_roles_list,
+                    "members": members_list
+                }
+                clean_teams.append(clean_t)
             print_output(
-                teams,
-                columns=["name", "team_roles", "members", "team_id"],
+                clean_teams,
                 title="Teams"
             )
         else:

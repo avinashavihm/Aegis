@@ -126,9 +126,19 @@ def list_users(
         
         users = response.json()
         
-        # For structured formats, show full data
+        # For structured formats, remove IDs
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
-            print_output(users, title="Users")
+            clean_users = []
+            for user in users:
+                clean_u = {
+                    "username": user["username"],
+                    "email": user["email"],
+                    "full_name": user.get("full_name", ""),
+                    "teams": [{"name": t.get('team_name', ''), "role": t.get('role_name', '')} for t in user.get('teams', [])],
+                    "roles": [r['name'] for r in user.get('roles', [])]
+                }
+                clean_users.append(clean_u)
+            print_output(clean_users, title="Users")
         else:
             # For table/text view, format the data
             display_users = []
@@ -190,9 +200,16 @@ def me(
         
         from src.utils import print_output, current_output_format
         
-        # For structured formats, output full data
+        # For structured formats, remove IDs
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
-            print_output(user)
+            clean_user = {
+                "username": user["username"],
+                "email": user["email"],
+                "full_name": user.get("full_name", ""),
+                "teams": [{"name": t.get('name', ''), "role": t.get('role_name', '')} for t in user.get('teams', [])],
+                "roles": [r['name'] for r in user.get('roles', [])]
+            }
+            print_output(clean_user)
         else:
             # Format teams and roles like in show_user
             teams_str = ", ".join([t.get('team_name', t.get('name', '')) for t in user.get('teams', [])])
@@ -244,9 +261,16 @@ def show_user(user_identifier: str, output: Optional[OutputFormat] = None):
         
         from src.utils import current_output_format, print_output
         
-        # For structured formats, output full data
+        # For structured formats, remove IDs
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
-            print_output(user)
+            clean_user = {
+                "username": user["username"],
+                "email": user["email"],
+                "full_name": user.get("full_name", ""),
+                "teams": [{"name": t.get('name', ''), "role": t.get('role_name', '')} for t in user.get('teams', [])],
+                "roles": [r['name'] for r in user.get('roles', [])]
+            }
+            print_output(clean_user)
         else:
             # Format teams and roles like in list view
             teams_str = ", ".join([t.get('team_name', t.get('name', '')) for t in user.get('teams', [])])

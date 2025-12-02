@@ -67,12 +67,25 @@ def list_policies(
         
         policies = response.json()
         
-        from src.utils import print_output
-        print_output(
-            policies,
-            columns=["name", "description"],
-            title="Policies"
-        )
+        from src.utils import print_output, current_output_format
+        
+        # For structured formats (JSON/YAML), remove IDs and timestamps
+        if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
+            clean_policies = []
+            for p in policies:
+                clean_p = {
+                    "name": p["name"],
+                    "description": p.get("description", ""),
+                    "content": p.get("content", {})
+                }
+                clean_policies.append(clean_p)
+            print_output(clean_policies, title="Policies")
+        else:
+            print_output(
+                policies,
+                columns=["name", "description"],
+                title="Policies"
+            )
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
     except Exception as e:

@@ -53,9 +53,18 @@ def list_roles(
         
         from src.utils import current_output_format
         
-        # For structured formats (JSON/YAML), show full role data
+        # For structured formats (JSON/YAML), remove IDs and timestamps
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
-            print_output(roles)
+            clean_roles = []
+            for r in roles:
+                clean_r = {
+                    "name": r["name"],
+                    "scope": "Team" if r["team_id"] else "Global",
+                    "description": r.get("description", ""),
+                    "policies": [p.get('name', p.get('policy_name', '')) for p in r.get("policies", [])]
+                }
+                clean_roles.append(clean_r)
+            print_output(clean_roles)
         else:
             # For table/text, show summary
             display_roles = []
