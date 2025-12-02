@@ -30,7 +30,7 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: agentic_ops
-      DB_USER: admin
+      DB_USER: aegis_app
       DB_PASSWORD: password123
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       ALGORITHM: HS256

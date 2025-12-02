@@ -63,19 +63,22 @@ def list_roles(
                 clean_roles.append(clean_r)
             print_output(clean_roles)
         else:
-            # For table/text, show summary
+            # For table/text, show summary with policies
             display_roles = []
             for r in roles:
+                policies = r.get("policies", [])
+                policy_names = ", ".join([p.get("name", "") for p in policies]) if policies else "-"
                 display_roles.append({
                     "name": r["name"],
                     "scope": "Team" if r["team_id"] else "Global",
                     "description": r["description"] or "",
+                    "policies": policy_names,
                     "id": r["id"]
                 })
-                
+            
             print_output(
                 display_roles,
-                columns=["name", "scope", "description"],
+                columns=["name", "scope", "description", "policies"],
                 title="Roles"
             )
 

@@ -56,7 +56,7 @@ CREATE TABLE policies (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Roles Table (Modified: Removed policy column)
+-- Roles Table
 CREATE TABLE roles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(50) NOT NULL,
@@ -110,27 +110,27 @@ CREATE INDEX idx_roles_team_id ON roles(team_id);
 CREATE INDEX idx_workspaces_name ON workspaces(name);
 CREATE INDEX idx_workspaces_owner_id ON workspaces(owner_id);
 
--- Seed Default Policies
+-- Seed Default Policies (AWS IAM style with Effect: Allow/Deny)
 INSERT INTO policies (name, description, content) VALUES
 (
     'FullAccess',
     'Full administrative access to everything',
-    '{"statements": [{"sid": "FullAccess", "effect": "allow", "actions": ["*"], "resources": ["*"]}]}'
+    '{"Version": "2012-10-17", "Statement": [{"Sid": "FullAccess", "Effect": "Allow", "Action": ["*"], "Resource": ["*"]}]}'
 ),
 (
     'TeamManage',
     'Can manage team settings and members',
-    '{"statements": [{"sid": "TeamManage", "effect": "allow", "actions": ["team:read", "team:update", "member:read", "member:add", "member:remove", "member:update"], "resources": ["*"]}]}'
+    '{"Version": "2012-10-17", "Statement": [{"Sid": "TeamManage", "Effect": "Allow", "Action": ["team:read", "team:update", "member:read", "member:add", "member:remove", "member:update"], "Resource": ["*"]}]}'
 ),
 (
     'ReadOnly',
     'Read-only access',
-    '{"statements": [{"sid": "ReadOnly", "effect": "allow", "actions": ["team:read", "member:read"], "resources": ["*"]}]}'
+    '{"Version": "2012-10-17", "Statement": [{"Sid": "ReadOnly", "Effect": "Allow", "Action": ["*:read"], "Resource": ["*"]}]}'
 ),
 (
     'DeployAccess',
     'Can deploy and manage deployments',
-    '{"statements": [{"sid": "DeployAccess", "effect": "allow", "actions": ["team:read", "deployment:*"], "resources": ["*"]}]}'
+    '{"Version": "2012-10-17", "Statement": [{"Sid": "DeployAccess", "Effect": "Allow", "Action": ["team:read", "deployment:*"], "Resource": ["*"]}]}'
 );
 
 -- Seed Default Roles (Linked to Policies)
@@ -208,33 +208,119 @@ DECLARE
     user_uuid UUID;
 BEGIN
     user_uuid := current_setting('app.current_user_id', true)::uuid;
+    RETURN EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = user_uuid);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- AWS IAM-style policy evaluation function
+-- Checks if user has permission for an action on a resource
+-- Deny statements have higher priority than Allow statements
+CREATE OR REPLACE FUNCTION evaluate_policy_permission(
+    action_name TEXT,
+    resource_type TEXT,
+    resource_id TEXT DEFAULT NULL
+) RETURNS BOOLEAN AS $$
+DECLARE
+    user_uuid UUID;
+    policy_json JSONB;
+    statement JSONB;
+    effect TEXT;
+    actions JSONB;
+    resources JSONB;
+    action_match BOOLEAN;
+    resource_match BOOLEAN;
+    has_deny BOOLEAN := FALSE;
+    has_allow BOOLEAN := FALSE;
+    res_text TEXT;
+    act_text TEXT;
+BEGIN
+    user_uuid := current_setting('app.current_user_id', true)::uuid;
     
-    -- Check direct user roles (bypass RLS)
-    IF EXISTS (
-        SELECT 1 FROM user_roles ur
-        WHERE ur.user_id = user_uuid
-    ) THEN
-        RETURN TRUE;
+    IF user_uuid IS NULL THEN
+        RETURN FALSE;
     END IF;
     
-    -- Check team membership (bypass RLS by using SECURITY DEFINER)
-    RETURN EXISTS (
-        SELECT 1 FROM team_members tm
-        WHERE tm.user_id = user_uuid
-    );
+    -- Get all policies attached to user's roles
+    FOR policy_json IN
+        SELECT p.content
+        FROM user_roles ur
+        JOIN role_policies rp ON ur.role_id = rp.role_id
+        JOIN policies p ON rp.policy_id = p.id
+        WHERE ur.user_id = user_uuid
+    LOOP
+        -- Process each statement in the policy
+        FOR statement IN SELECT * FROM jsonb_array_elements(policy_json->'Statement')
+        LOOP
+            effect := statement->>'Effect';
+            actions := statement->'Action';
+            resources := statement->'Resource';
+            
+            action_match := FALSE;
+            resource_match := FALSE;
+            
+            -- Check if action matches (supports wildcard *)
+            IF actions IS NULL OR actions = '["*"]'::jsonb THEN
+                action_match := TRUE;
+            ELSIF jsonb_typeof(actions) = 'array' THEN
+                FOR act_text IN SELECT jsonb_array_elements_text(actions)
+                LOOP
+                    IF act_text = '*' 
+                       OR act_text = action_name 
+                       OR (act_text LIKE '%:*' AND SPLIT_PART(act_text, ':', 1) = SPLIT_PART(action_name, ':', 1))
+                       OR action_name LIKE act_text
+                    THEN
+                        action_match := TRUE;
+                        EXIT;
+                    END IF;
+                END LOOP;
+            END IF;
+            
+            -- Check if resource matches (supports wildcard *)
+            IF resources IS NULL OR resources = '["*"]'::jsonb THEN
+                resource_match := TRUE;
+            ELSIF jsonb_typeof(resources) = 'array' THEN
+                FOR res_text IN SELECT jsonb_array_elements_text(resources)
+                LOOP
+                    IF res_text = '*' OR res_text = resource_id THEN
+                        resource_match := TRUE;
+                        EXIT;
+                    END IF;
+                END LOOP;
+            END IF;
+            
+            -- If both action and resource match, record the effect
+            IF action_match AND resource_match THEN
+                IF effect = 'Deny' THEN
+                    has_deny := TRUE;
+                ELSIF effect = 'Allow' THEN
+                    has_allow := TRUE;
+                END IF;
+            END IF;
+        END LOOP;
+    END LOOP;
+    
+    -- Deny has higher priority - if any deny, return false
+    IF has_deny THEN
+        RETURN FALSE;
+    END IF;
+    
+    -- Otherwise, return true if there's an allow
+    RETURN has_allow;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- RLS Policies (RBAC)
 
 -- 1. Users Table
--- Read: Admins can see all users, unauthenticated can see for login, authenticated non-admins see nothing
+-- Read: Admins see all, users with allow policy see users (unless denied)
+-- Deny has higher priority - if user has deny policy for a user, they can't see it
 CREATE POLICY users_read_own ON users
     FOR SELECT
     USING (
         current_user_is_admin()
         OR current_setting('app.current_user_id', true) IS NULL
         OR current_setting('app.current_user_id', true) = ''
+        OR evaluate_policy_permission('user:read', 'user', 'user:' || username)
     );
 
 -- Insert: Anyone can create a user (for registration), but they get no access until roles assigned
@@ -255,29 +341,24 @@ CREATE POLICY users_update_own ON users
     );
 
 -- 2. Roles Table
--- Read: Admins see all, users with roles see global roles (team_id IS NULL)
--- Team-scoped roles are handled via team membership checks in API layer
+-- Read: Admins see all, users with allow policy see roles (unless denied)
+-- Deny has higher priority - if user has deny policy for a role, they can't see it
 CREATE POLICY roles_read_access ON roles
     FOR SELECT
     USING (
         current_user_is_admin()
-        OR (
-            current_user_has_any_role()
-            AND team_id IS NULL  -- Global roles visible to users with any role
-        )
+        OR evaluate_policy_permission('role:read', 'role', 'role:' || name)
     );
 
 -- 3. Teams Table
--- Read: Admins see all, users with roles see teams they own
--- Team membership access handled via team_members table RLS
+-- Read: Admins see all, users with allow policy see teams (unless denied)
+-- Deny has higher priority - if user has deny policy for a team, they can't see it
 CREATE POLICY teams_read_access ON teams
     FOR SELECT
     USING (
         current_user_is_admin()
-        OR (
-            current_user_has_any_role()
-            AND owner_id = current_setting('app.current_user_id', true)::uuid
-        )
+        OR owner_id = current_setting('app.current_user_id', true)::uuid
+        OR evaluate_policy_permission('team:read', 'team', 'team:' || name)
     );
 
 -- Insert: Any authenticated user can create a team (must be owner)
@@ -347,20 +428,13 @@ CREATE POLICY team_roles_write_access ON team_roles
     );
 
 -- 7. Policies Table
--- Read: Admins see all, users with roles see policies attached to their direct roles
+-- Read: Admins see all, users with allow policy see policies (unless denied)
+-- Deny has higher priority - if user has deny policy for a policy, they can't see it
 CREATE POLICY policies_read_access ON policies
     FOR SELECT
     USING (
         current_user_is_admin()
-        OR (
-            current_user_has_any_role()
-            AND EXISTS (
-                SELECT 1 FROM role_policies rp
-                JOIN user_roles ur ON rp.role_id = ur.role_id
-                WHERE rp.policy_id = policies.id
-                AND ur.user_id = current_setting('app.current_user_id', true)::uuid
-            )
-        )
+        OR evaluate_policy_permission('policy:read', 'policy', 'policy:' || name)
     );
 
 -- 6. Role Policies Table
@@ -380,12 +454,13 @@ CREATE POLICY role_policies_read_access ON role_policies
     );
 
 -- 8. Workspaces Table
--- Read: Admins see all, owners see their own
+-- Read: Admins see all, owners see their own, users with allow policy see workspaces (unless denied)
 CREATE POLICY workspaces_read_access ON workspaces
     FOR SELECT
     USING (
         current_user_is_admin()
         OR owner_id = current_setting('app.current_user_id', true)::uuid
+        OR evaluate_policy_permission('workspace:read', 'workspace', 'workspace:' || name)
     );
 
 -- Insert: Any authenticated user can create a workspace
