@@ -22,7 +22,6 @@ uv pip install -e .
 The CLI stores configuration in `~/.aegis/config`:
 - **API URL**: Service endpoint (default: `http://localhost:8000`)
 - **Auth Token**: JWT token from login
-- **Current Context**: Active team
 
 Set custom API URL:
 ```bash
@@ -73,38 +72,114 @@ aegis login --username <username> -p <password>
 aegis get user
 ```
 
-### Team Management (formerly Workspaces)
+### Team Management
 ```bash
-# Create a team (auto-sets as current context)
+# Create a team
 aegis team create "My Team"
-# Note: Name is automatically slugified (e.g., "My Team" -> "my-team")
 
 # List teams
 aegis get teams
 
-# Set current team context
-aegis team set my-team
+# View team details
+aegis get team "My Team"
 
 # List team members
-aegis team members
+aegis team members --team "My Team"
+
+# Add member to team
+aegis team add-member --team "My Team" --user username
+
+# Attach role to team
+aegis attach-team-role --team "My Team" --role role-name
 ```
 
 ### Policy Management
-Policies define permissions and are attached to roles.
+Policies define permissions and are attached to roles. Policies use AWS IAM-style format.
 
 ```bash
 # List policies
 aegis get policies
 
-# Create a policy
-aegis policy create MyPolicy --content '{"statements": [{"effect": "allow", "actions": ["*"], "resources": ["*"]}]}'
+# Create a policy from JSON file (using --file or -f)
+aegis policy create MyPolicy --file policy.json --desc "Policy description"
+aegis policy create MyPolicy -f policy.json --desc "Policy description"
+
+# Create multiple policies from a single file (YAML format with --- separator)
+aegis policy create dummy -f policies.yaml
+# The 'name' argument is ignored when file contains multiple policies
+
+# Create a policy from JSON string (using --content or -c)
+aegis policy create MyPolicy --content '{"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": ["*"], "Resource": ["*"]}]}' --desc "Policy description"
+aegis policy create MyPolicy -c '{"Version": "2012-10-17", "Statement": [...]}' --desc "Policy description"
 
 # View policy details
 aegis get policy MyPolicy
+
+# Update policy from file (using --file or -f)
+aegis policy update MyPolicy --file updated-policy.json
+aegis policy update MyPolicy -f updated-policy.json
+
+# Update policy from content (using --content or -c)
+aegis policy update MyPolicy --content '{"Version": "2012-10-17", "Statement": [...]}'
+aegis policy update MyPolicy -c '{"Version": "2012-10-17", "Statement": [...]}'
 ```
 
+**Single Policy File Example** (`policy.json`):
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowAll",
+      "Effect": "Allow",
+      "Action": ["*"],
+      "Resource": ["*"]
+    }
+  ]
+}
+```
+
+**Multiple Policies File Example** (`policies.yaml`):
+```yaml
+name: ReadOnlyPolicy
+description: Read-only access policy
+content:
+  Version: "2012-10-17"
+  Statement:
+    - Sid: AllowRead
+      Effect: Allow
+      Action: ["*:read"]
+      Resource: ["*"]
+---
+name: WritePolicy
+description: Write access policy
+content:
+  Version: "2012-10-17"
+  Statement:
+    - Sid: AllowWrite
+      Effect: Allow
+      Action: ["*:write"]
+      Resource: ["*"]
+---
+name: DenyPolicy
+description: Deny all access
+content:
+  Version: "2012-10-17"
+  Statement:
+    - Sid: DenyAll
+      Effect: Deny
+      Action: ["*"]
+      Resource: ["*"]
+```
+
+When using multiple policies in one file:
+- Use `---` to separate each policy document
+- Each document should have `name`, `description`, and `content` fields
+- The `name` argument in the command is ignored when multiple policies are detected
+- All policies will be created in a single operation
+
 ### Role Management
-Roles link users to policies within a team or globally.
+Roles are global and can be attached to users or teams. They link policies to define permissions.
 Default roles: `admin`, `editor`, `viewer`, `deployer`.
 
 ```bash
@@ -112,10 +187,25 @@ Default roles: `admin`, `editor`, `viewer`, `deployer`.
 aegis get roles
 
 # Create a custom role with attached policies
-aegis role create custom-role --policy FullAccess --policy ReadOnly
+aegis role create custom-role --desc "Custom role description" --policy FullAccess --policy ReadOnly
 
 # View role details and attached policies
 aegis get role admin
+
+# Attach role to user
+aegis attach-user-role --user username --role role-name
+
+# Attach role to team
+aegis attach-team-role --team team-name --role role-name
+
+# Attach policy to role
+aegis attach-role-policy --role role-name --policy policy-name
+
+# Edit role (interactive)
+aegis edit role role-name
+
+# Update role
+aegis role edit role-name --desc "Updated description" --policy Policy1 --policy Policy2
 ```
 
 ## Example Workflow
@@ -129,12 +219,21 @@ uvicorn src.main:app --reload
 aegis user create john --email john@example.com -p secret123
 aegis login --username john -p secret123
 
-# 3. Create and use team
-aegis team create "Production" --slug prod
-aegis team ls
+# 3. Create team
+aegis team create "Production"
 
-# 4. View members
+# 4. List teams
+aegis get teams
+
+# 5. View team members
 aegis team members
+
+# 6. Create role and attach to user
+aegis role create developer --desc "Developer role" --policy DeployAccess
+aegis attach-user-role --user john --role developer
+
+# 7. Attach role to team
+aegis attach-team-role --team production --role developer
 ```
 
 ## Configuration File
@@ -143,6 +242,7 @@ aegis team members
 ```yaml
 api_url: http://localhost:8000
 auth_token: eyJ0eXAiOiJKV1QiLCJhbGc...
-current_context: prod
 ```
+
+**Note:** Team context is no longer used. All commands require explicit team specification when needed.
 

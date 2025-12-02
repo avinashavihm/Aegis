@@ -1,10 +1,12 @@
 import typer
-from typing import Optional
+from typing import Optional, List
 from rich.console import Console
 from src.api_client import get_api_client
 from src.utils import OutputFormat, set_output_format
 import httpx
 import json
+import yaml
+from pathlib import Path
 
 app = typer.Typer()
 console = Console()
@@ -12,20 +14,105 @@ console = Console()
 @app.command()
 def create(
     name: str,
-    content: str = typer.Option(..., "--content", "-c", help="Policy content (JSON string)"),
+    content: Optional[str] = typer.Option(None, "--content", "-c", help="Policy content (JSON string)"),
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="Path to JSON file containing policy content"),
     description: str = typer.Option(None, "--desc", "-d", help="Policy description")
 ):
-    """Create a new policy."""
+    """Create a new policy from JSON content or file."""
     client = get_api_client()
     
+    # Validate that either content or file is provided
+    if not content and not file:
+        console.print("[red]Error:[/red] Either --content or --file must be provided")
+        return
+    
+    if content and file:
+        console.print("[red]Error:[/red] Cannot specify both --content and --file")
+        return
+    
     try:
-        # Validate JSON
-        try:
-            json_content = json.loads(content)
-        except json.JSONDecodeError:
-            console.print("[red]Error:[/red] Invalid JSON content")
-            return
+        # Read content from file or use provided content
+        if file:
+            file_path = Path(file)
+            if not file_path.exists():
+                console.print(f"[red]Error:[/red] File not found: {file}")
+                return
+            
+            try:
+                with open(file_path, 'r') as f:
+                    file_content = f.read()
+                
+                # Check if file contains multiple YAML documents (separated by ---)
+                if '---' in file_content:
+                    # Parse multiple YAML documents
+                    policies_data = []
+                    for doc in yaml.safe_load_all(file_content):
+                        if doc:
+                            policies_data.append(doc)
+                    
+                    if not policies_data:
+                        console.print("[red]Error:[/red] No valid policies found in file")
+                        return
+                    
+                    # Create multiple policies
+                    created_count = 0
+                    failed_count = 0
+                    
+                    for policy_data in policies_data:
+                        policy_name = policy_data.get('name') or name
+                        policy_desc = policy_data.get('description') or description
+                        policy_content = policy_data.get('content') or policy_data
+                        
+                        # If content is a dict without 'content' key, use the whole dict
+                        if 'content' not in policy_data and isinstance(policy_data, dict):
+                            # Remove metadata keys
+                            policy_content = {k: v for k, v in policy_data.items() 
+                                            if k not in ['name', 'description']}
+                        
+                        response = client.post("/policies", json={
+                            "name": policy_name,
+                            "description": policy_desc,
+                            "content": policy_content
+                        })
+                        
+                        if response.status_code == 201:
+                            created_count += 1
+                            console.print(f"[green]Policy '{policy_name}' created successfully![/green]")
+                        else:
+                            failed_count += 1
+                            error_msg = response.json().get('detail', response.text) if response.status_code == 400 else response.text
+                            console.print(f"[red]Error creating policy '{policy_name}':[/red] {error_msg}")
+                    
+                    console.print(f"\n[bold]Summary:[/bold] {created_count} created, {failed_count} failed")
+                    return
+                else:
+                    # Try to parse as JSON first
+                    try:
+                        json_content = json.loads(file_content)
+                    except json.JSONDecodeError:
+                        # Try YAML
+                        try:
+                            yaml_content = yaml.safe_load(file_content)
+                            if isinstance(yaml_content, dict):
+                                # If it has 'content' key, use that, otherwise use whole dict
+                                json_content = yaml_content.get('content', yaml_content)
+                            else:
+                                json_content = yaml_content
+                        except yaml.YAMLError as e:
+                            console.print(f"[red]Error:[/red] Invalid JSON or YAML in file: {e}")
+                            return
+            except Exception as e:
+                console.print(f"[red]Error:[/red] Failed to read file: {e}")
+                return
+        else:
+            # Validate JSON from content string
+            try:
+                json_content = json.loads(content)
+            except json.JSONDecodeError:
+                console.print("[red]Error:[/red] Invalid JSON content")
+                return
 
+        # Create single policy
         response = client.post("/policies", json={
             "name": name,
             "description": description,
@@ -131,7 +218,8 @@ def update(
     policy_identifier: str = typer.Argument(..., help="Policy name or ID"),
     name: str = typer.Option(None, "--name", "-n", help="New name"),
     description: str = typer.Option(None, "--desc", "-d", help="New description"),
-    content: str = typer.Option(None, "--content", "-c", help="New content (JSON string)")
+    content: Optional[str] = typer.Option(None, "--content", "-c", help="New content (JSON string)"),
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="Path to JSON file containing new policy content")
 ):
     """Update a policy."""
     client = get_api_client()
@@ -141,11 +229,28 @@ def update(
         payload["name"] = name
     if description:
         payload["description"] = description
+    if content and file:
+        console.print("[red]Error:[/red] Cannot specify both --content and --file")
+        return
     if content:
         try:
             payload["content"] = json.loads(content)
         except json.JSONDecodeError:
             console.print("[red]Error:[/red] Invalid JSON content")
+            return
+    elif file:
+        file_path = Path(file)
+        if not file_path.exists():
+            console.print(f"[red]Error:[/red] File not found: {file}")
+            return
+        try:
+            with open(file_path, 'r') as f:
+                payload["content"] = json.load(f)
+        except json.JSONDecodeError as e:
+            console.print(f"[red]Error:[/red] Invalid JSON in file: {e}")
+            return
+        except Exception as e:
+            console.print(f"[red]Error:[/red] Failed to read file: {e}")
             return
             
     if not payload:

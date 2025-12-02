@@ -455,6 +455,27 @@ CREATE POLICY policies_read_access ON policies
         OR evaluate_policy_permission('policy:read', 'policy', 'policy:' || name)
     );
 
+-- Insert: Only admins can create policies (zero-trust: no access without roles)
+CREATE POLICY policies_insert ON policies
+    FOR INSERT
+    WITH CHECK (
+        current_user_is_admin()
+    );
+
+-- Update: Only admins can update policies (zero-trust: no access without roles)
+CREATE POLICY policies_update ON policies
+    FOR UPDATE
+    USING (
+        current_user_is_admin()
+    );
+
+-- Delete: Only admins can delete policies (zero-trust: no access without roles)
+CREATE POLICY policies_delete ON policies
+    FOR DELETE
+    USING (
+        current_user_is_admin()
+    );
+
 -- 6. Role Policies Table
 -- Read: Admins see all, users see role policies for their direct roles
 CREATE POLICY role_policies_read_access ON role_policies

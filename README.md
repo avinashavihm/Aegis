@@ -130,12 +130,14 @@ Base URL: `http://localhost:8000`
 ### Policies & Roles
 - `GET /policies` - List policies
 - `POST /policies` - Create policy
-- `GET /roles` - List roles
+- `GET /roles` - List roles (all roles are global)
 - `POST /roles` - Create role with attached policies
+- `PUT /roles/{id}` - Update role
+- `DELETE /roles/{id}` - Delete role
 
 ## RBAC Roles & Policies
 
-Roles are collections of policies that define permissions.
+Roles are global collections of policies that define permissions. Roles can be attached to users or teams.
 
 | Role | Permissions |
 |------|-------------|
@@ -143,6 +145,12 @@ Roles are collections of policies that define permissions.
 | **editor** | Can manage team settings and members |
 | **viewer** | Read-only access to team and members |
 | **deployer** | Can deploy and manage deployments |
+
+**Key Points:**
+- All roles are **global** (not team-scoped)
+- Roles can be attached to **users** directly or to **teams** (inherited by team members)
+- Policies use AWS IAM-style format with `Allow` and `Deny` effects
+- `Deny` statements take priority over `Allow` statements
 
 ## Development
 
