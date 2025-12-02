@@ -59,12 +59,10 @@ CREATE TABLE policies (
 -- Roles Table
 CREATE TABLE roles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(50) NOT NULL,
+    name VARCHAR(50) UNIQUE NOT NULL,
     description TEXT,
-    team_id UUID REFERENCES teams(id) ON DELETE CASCADE, -- Null for global roles
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(name, team_id)
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Role-Policies Mapping (Many-to-Many)
@@ -106,7 +104,6 @@ CREATE INDEX idx_teams_name ON teams(name);
 CREATE INDEX idx_teams_owner_id ON teams(owner_id);
 CREATE INDEX idx_team_members_user_id ON team_members(user_id);
 CREATE INDEX idx_team_members_team_id ON team_members(team_id);
-CREATE INDEX idx_roles_team_id ON roles(team_id);
 CREATE INDEX idx_workspaces_name ON workspaces(name);
 CREATE INDEX idx_workspaces_owner_id ON workspaces(owner_id);
 
@@ -348,6 +345,27 @@ CREATE POLICY roles_read_access ON roles
     USING (
         current_user_is_admin()
         OR evaluate_policy_permission('role:read', 'role', 'role:' || name)
+    );
+
+-- Insert: Only admins can create roles (zero-trust: no access without roles)
+CREATE POLICY roles_insert ON roles
+    FOR INSERT
+    WITH CHECK (
+        current_user_is_admin()
+    );
+
+-- Update: Only admins can update roles (zero-trust: no access without roles)
+CREATE POLICY roles_update ON roles
+    FOR UPDATE
+    USING (
+        current_user_is_admin()
+    );
+
+-- Delete: Only admins can delete roles (zero-trust: no access without roles)
+CREATE POLICY roles_delete ON roles
+    FOR DELETE
+    USING (
+        current_user_is_admin()
     );
 
 -- 3. Teams Table

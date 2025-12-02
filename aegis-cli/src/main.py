@@ -356,12 +356,12 @@ def get(
     # Handle plural forms for listing
     if resource_type == "roles":
         from src.commands.role import list_roles
-        list_roles(team_name=None, output=output)
+        list_roles(output=output)
     elif resource_type == "role":
         if not identifier:
             # Default to listing all roles
             from src.commands.role import list_roles
-            list_roles(team_name=None, output=output)
+            list_roles(output=output)
         else:
             from src.commands.role import show_role
             show_role(identifier, output)

@@ -13,13 +13,10 @@ async def create_role(
 ):
     """
     Create a new role.
-    If team_id is provided, creates a team-specific role.
-    Otherwise, creates a global role.
     Policies are linked by ID or name.
     """
     name = data.get("name")
     description = data.get("description")
-    team_id = data.get("team_id")
     policy_ids = data.get("policy_ids", []) # List of policy IDs
     
     if not name:
@@ -38,30 +35,24 @@ async def create_role(
             
     with get_db_connection(str(current_user_id)) as conn:
         with conn.cursor() as cur:
-            # Check for duplicate name in scope
-            if team_id:
-                cur.execute(
-                    "SELECT id FROM roles WHERE name = %s AND team_id = %s",
-                    (name, str(team_id))
-                )
-            else:
-                cur.execute(
-                    "SELECT id FROM roles WHERE name = %s AND team_id IS NULL",
-                    (name,)
-                )
+            # Check for duplicate name
+            cur.execute(
+                "SELECT id FROM roles WHERE name = %s",
+                (name,)
+            )
                 
             if cur.fetchone():
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Role with this name already exists in this scope"
+                    detail="Role with this name already exists"
                 )
             
             # Create role
             cur.execute(
-                """INSERT INTO roles (name, description, team_id) 
-                   VALUES (%s, %s, %s) 
-                   RETURNING id, name, description, team_id, created_at""",
-                (name, description, str(team_id) if team_id else None)
+                """INSERT INTO roles (name, description) 
+                   VALUES (%s, %s) 
+                   RETURNING id, name, description, created_at""",
+                (name, description)
             )
             role_data = cur.fetchone()
             role_id = role_data['id']
@@ -80,31 +71,18 @@ async def create_role(
 
 @router.get("")
 async def list_roles(
-    team_id: UUID = None,
     current_user_id: UUID = Depends(get_current_user_id)
 ):
     """
-    List roles.
-    If team_id is provided, lists global roles + roles for that team.
-    Otherwise, lists only global roles.
+    List all roles.
     """
     with get_db_connection(str(current_user_id)) as conn:
         with conn.cursor() as cur:
-            if team_id:
-                cur.execute(
-                    """SELECT id, name, description, team_id, created_at 
-                       FROM roles 
-                       WHERE team_id IS NULL OR team_id = %s
-                       ORDER BY team_id NULLS FIRST, name""",
-                    (str(team_id),)
-                )
-            else:
-                cur.execute(
-                    """SELECT id, name, description, team_id, created_at 
-                       FROM roles 
-                       WHERE team_id IS NULL
-                       ORDER BY name"""
-                )
+            cur.execute(
+                """SELECT id, name, description, created_at 
+                   FROM roles 
+                   ORDER BY name"""
+            )
             roles = cur.fetchall()
             
             # Fetch policies for each role
@@ -140,13 +118,13 @@ async def get_role(
                 UUID(role_identifier)
                 # It's a valid UUID, search by ID
                 cur.execute(
-                    "SELECT id, name, description, team_id, created_at FROM roles WHERE id = %s",
+                    "SELECT id, name, description, created_at FROM roles WHERE id = %s",
                     (role_identifier,)
                 )
             except ValueError:
-                # Not a UUID, search by name (global roles only for simplicity)
+                # Not a UUID, search by name
                 cur.execute(
-                    "SELECT id, name, description, team_id, created_at FROM roles WHERE name = %s AND team_id IS NULL",
+                    "SELECT id, name, description, created_at FROM roles WHERE name = %s",
                     (role_identifier,)
                 )
             
@@ -190,7 +168,7 @@ async def update_role(
         where_clause = "id = %s"
         identifier = role_identifier
     except ValueError:
-        where_clause = "name = %s AND team_id IS NULL"
+        where_clause = "name = %s"
         identifier = role_identifier
         
     with get_db_connection(str(current_user_id)) as conn:
@@ -221,7 +199,7 @@ async def update_role(
             conn.commit()
             
             # Fetch updated role
-            cur.execute("SELECT id, name, description, team_id, created_at FROM roles WHERE id = %s", (role_id,))
+            cur.execute("SELECT id, name, description, created_at FROM roles WHERE id = %s", (role_id,))
             updated_role = cur.fetchone()
             
     return dict(updated_role)
@@ -240,7 +218,7 @@ async def delete_role(
                 where_clause = "id = %s"
                 identifier = role_identifier
             except ValueError:
-                where_clause = "name = %s AND team_id IS NULL"
+                where_clause = "name = %s"
                 identifier = role_identifier
                 
             # Check if role is in use

@@ -12,35 +12,15 @@ app = typer.Typer()
 console = Console()
 
 def list_roles(
-    team_name: Optional[str] = typer.Option(None, "--team", "-t", help="Team name (to filter team-scoped roles)"),
     output: Optional[OutputFormat] = typer.Option(None, "--output", "-o", help="Output format")
 ):
     """List roles."""
     if output:
         set_output_format(output)
     client = get_api_client()
-    
-    params = {}
-    if team_name:
-        try:
-            response = client.get("/teams")
-            if response.status_code == 200:
-                teams = response.json()
-                t = next((t for t in teams if t["name"] == team_name), None)
-                if t:
-                    params["team_id"] = t["id"]
-                else:
-                    console.print(f"[red]Error:[/red] Team '{team_name}' not found.")
-                    return
-            else:
-                console.print(f"[red]Error:[/red] Could not load teams")
-                return
-        except Exception as e:
-            console.print(f"[red]Error resolving team:[/red] {e}")
-            return
 
     try:
-        response = client.get("/roles", params=params)
+        response = client.get("/roles")
         
         if response.status_code != 200:
             console.print(f"[red]Error:[/red] {response.text}")
@@ -56,7 +36,6 @@ def list_roles(
             for r in roles:
                 clean_r = {
                     "name": r["name"],
-                    "scope": "Team" if r["team_id"] else "Global",
                     "description": r.get("description", ""),
                     "policies": [p.get('name', p.get('policy_name', '')) for p in r.get("policies", [])]
                 }
@@ -70,7 +49,6 @@ def list_roles(
                 policy_names = ", ".join([p.get("name", "") for p in policies]) if policies else "-"
                 display_roles.append({
                     "name": r["name"],
-                    "scope": "Team" if r["team_id"] else "Global",
                     "description": r["description"] or "",
                     "policies": policy_names,
                     "id": r["id"]
@@ -78,7 +56,7 @@ def list_roles(
             
             print_output(
                 display_roles,
-                columns=["name", "scope", "description", "policies"],
+                columns=["name", "description", "policies"],
                 title="Roles"
             )
 
@@ -92,8 +70,7 @@ def list_roles(
 def create(
     name: str,
     description: Optional[str] = typer.Option(None, "--desc", "-d", help="Role description"),
-    policy_ids: Optional[List[str]] = typer.Option(None, "--policy", "-p", help="Policy IDs or Names to attach"),
-    team_name: Optional[str] = typer.Option(None, "--team", "-t", help="Team name (for team-specific role)")
+    policy_ids: Optional[List[str]] = typer.Option(None, "--policy", "-p", help="Policy IDs or Names to attach")
 ):
     """Create a new role."""
     client = get_api_client()
@@ -125,25 +102,7 @@ def create(
         "name": name,
         "description": description,
         "policy_ids": resolved_policy_ids
-    }
-    
-    if team_name:
-        try:
-            response = client.get("/teams")
-            if response.status_code == 200:
-                teams = response.json()
-                t = next((t for t in teams if t["name"] == team_name), None)
-                if t:
-                    payload["team_id"] = t["id"]
-                else:
-                    console.print(f"[red]Error:[/red] Team '{team_name}' not found.")
-                    return
-            else:
-                console.print(f"[red]Error:[/red] Could not load teams")
-                return
-        except Exception as e:
-            console.print(f"[red]Error resolving team:[/red] {e}")
-            return 
+    } 
 
     try:
         response = client.post("/roles", json=payload)
@@ -186,7 +145,6 @@ def show_role(
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
             clean_role = {
                 "name": role["name"],
-                "scope": "Team" if role.get("team_id") else "Global",
                 "description": role.get("description", "")
             }
             if "policies" in role:
@@ -196,12 +154,11 @@ def show_role(
             # For text/table, show as a single-row table
             display_role = {
                 "name": role["name"],
-                "scope": "Team" if role.get("team_id") else "Global",
                 "description": role["description"] or ""
             }
             print_output(
                 display_role,
-                columns=["name", "scope", "description"]
+                columns=["name", "description"]
             )
             
             # Show attached policies
