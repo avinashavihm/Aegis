@@ -210,15 +210,4 @@ Aegis consists of:
 - **Environment** (`aegis/environment/`) - Local execution environments
 - **CLI** (`aegis/cli/`) - Command-line interface
 
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📄 License
-
-[Add your license here]
-
-## 🙏 Acknowledgments
-
-Aegis is inspired by [AutoAgent](https://github.com/HKUDS/AutoAgent) and simplified for easier use and deployment.
 
