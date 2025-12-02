@@ -77,7 +77,7 @@ CREATE TABLE team_roles (
 -- Indexes for performance
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_username ON users(username);
-CREATE INDEX idx_teams_slug ON teams(slug);
+CREATE INDEX idx_teams_name ON teams(name);
 CREATE INDEX idx_teams_owner_id ON teams(owner_id);
 CREATE INDEX idx_team_members_user_id ON team_members(user_id);
 CREATE INDEX idx_team_members_team_id ON team_members(team_id);
@@ -136,25 +136,44 @@ ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE team_roles ENABLE ROW LEVEL SECURITY;
 
+-- Helper function to check if current user has admin role
+CREATE OR REPLACE FUNCTION current_user_is_admin() RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT 1 FROM user_roles ur
+        JOIN roles r ON ur.role_id = r.id
+        WHERE ur.user_id = current_setting('app.current_user_id', true)::uuid
+        AND r.name = 'admin'
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- RLS Policies (RBAC)
 
 -- 1. Users Table
--- Read: Users can read their own profile
+-- Read: Admins can see all users, regular users can only see their own profile
 CREATE POLICY users_read_own ON users
     FOR SELECT
-    USING (id = current_setting('app.current_user_id', true)::uuid);
+    USING (
+        current_user_is_admin()
+        OR id = current_setting('app.current_user_id', true)::uuid
+    );
 
--- Update: Users can update their own profile
+-- Update: Admins can update any user, users can update their own profile
 CREATE POLICY users_update_own ON users
     FOR UPDATE
-    USING (id = current_setting('app.current_user_id', true)::uuid);
+    USING (
+        current_user_is_admin()
+        OR id = current_setting('app.current_user_id', true)::uuid
+    );
 
 -- 2. Roles Table
--- Read: Global roles are visible to all. Team roles visible to members.
+-- Read: Admins see all roles, global roles visible to all, team roles visible to team members
 CREATE POLICY roles_read_access ON roles
     FOR SELECT
     USING (
-        team_id IS NULL
+        current_user_is_admin()
+        OR team_id IS NULL
         OR EXISTS (
             SELECT 1 FROM team_members
             WHERE team_id = roles.team_id
@@ -163,11 +182,12 @@ CREATE POLICY roles_read_access ON roles
     );
 
 -- 3. Teams Table
--- Read: Visible if owner OR member
+-- Read: Admins see all teams, others see teams they own or are members of
 CREATE POLICY teams_read_access ON teams
     FOR SELECT
     USING (
-        owner_id = current_setting('app.current_user_id', true)::uuid
+        current_user_is_admin()
+        OR owner_id = current_setting('app.current_user_id', true)::uuid
         OR EXISTS (
             SELECT 1 FROM team_members
             WHERE team_id = teams.id

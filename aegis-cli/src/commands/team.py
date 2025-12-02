@@ -13,23 +13,20 @@ console = Console()
 
 @app.command()
 def create(
-    name: str,
-    slug: str = typer.Option(None, "--slug", "-s", help="Unique slug for the team (auto-generated from name if omitted)")
+    name: str
 ):
     """Create a new team."""
     client = get_api_client()
     
-    # Enforce slug-like behavior for name
+    # Enforce team name constraints
     import re
     if not re.match(r'^[a-z0-9-]+$', name):
         console.print("[red]Error:[/red] Name must contain only lowercase letters, numbers, and hyphens (no spaces).")
         return
 
     try:
-        # Use name as both name and slug
         response = client.post("/teams", json={
-            "name": name,
-            "slug": name
+            "name": name
         })
         
         if response.status_code == 201:
@@ -76,7 +73,7 @@ def list_teams(
 
         # Add current context indicator and format roles
         for t in teams:
-            t[""] = "*" if t["slug"] == current_context else ""
+            t[""] = "*" if t["name"] == current_context else ""
             # Rename id to team_id for display
             t["team_id"] = t["id"]
             # Format roles and members for display
@@ -118,30 +115,30 @@ def list_teams(
 @app.command(name="assign-role")
 def assign_role(
     role: str = typer.Argument(..., help="Role name or ID to assign"),
-    team_slug: str = typer.Option(None, "--team", "-t", help="Team slug (optional, uses current context)")
+    team_name: str = typer.Option(None, "--team", "-t", help="Team name (optional, uses current context)")
 ):
     """Assign a role to a team (inherited by all members)."""
     client = get_api_client()
     
     # Use current context if no team specified
-    if not team_slug:
-        team_slug = get_context()
-        if not team_slug:
+    if not team_name:
+        team_name = get_context()
+        if not team_name:
             console.print("[red]Error:[/red] No team specified and no context set.")
             return
 
     try:
-        # First get team ID from slug
+        # First get team ID from name
         response = client.get("/teams")
         if response.status_code != 200:
             console.print(f"[red]Error:[/red] Could not load teams")
             return
         
         teams = response.json()
-        team = next((t for t in teams if t["slug"] == team_slug), None)
+        team = next((t for t in teams if t["name"] == team_name), None)
         
         if not team:
-            console.print(f"[red]Error:[/red] Team '{team_slug}' not found")
+            console.print(f"[red]Error:[/red] Team '{team_name}' not found")
             return
             
         # Assign role
@@ -165,30 +162,30 @@ def assign_role(
 @app.command(name="remove-role")
 def remove_role(
     role: str = typer.Argument(..., help="Role name or ID to remove"),
-    team_slug: str = typer.Option(None, "--team", "-t", help="Team slug (optional, uses current context)")
+    team_name: str = typer.Option(None, "--team", "-t", help="Team name (optional, uses current context)")
 ):
     """Remove a role from a team."""
     client = get_api_client()
     
     # Use current context if no team specified
-    if not team_slug:
-        team_slug = get_context()
-        if not team_slug:
+    if not team_name:
+        team_name = get_context()
+        if not team_name:
             console.print("[red]Error:[/red] No team specified and no context set.")
             return
 
     try:
-        # First get team ID from slug
+        # First get team ID from name
         response = client.get("/teams")
         if response.status_code != 200:
             console.print(f"[red]Error:[/red] Could not load teams")
             return
         
         teams = response.json()
-        team = next((t for t in teams if t["slug"] == team_slug), None)
+        team = next((t for t in teams if t["name"] == team_name), None)
         
         if not team:
-            console.print(f"[red]Error:[/red] Team '{team_slug}' not found")
+            console.print(f"[red]Error:[/red] Team '{team_name}' not found")
             return
             
         if not typer.confirm(f"Remove role '{role}' from team '{team['name']}'?"):
@@ -229,8 +226,8 @@ def set_team(name: str = typer.Argument(..., help="Team name")):
         
         teams = response.json()
         
-        # Since name == slug now, we just check slug field (which stores the name)
-        team_exists = any(t["slug"] == name for t in teams)
+        # Check if team exists by name
+        team_exists = any(t["name"] == name for t in teams)
         
         if team_exists:
             set_context(name)
@@ -255,7 +252,7 @@ def get_current_team():
 
 @app.command(name="members")
 def list_members(
-    team_slug: str = typer.Argument(None, help="Team slug (optional, uses current context if omitted)"),
+    team_name: str = typer.Argument(None, help="Team name (optional, uses current context if omitted)"),
     output: Optional[OutputFormat] = typer.Option(None, "--output", "-o", help="Output format")
 ):
     """List members of a team."""
@@ -264,24 +261,24 @@ def list_members(
     client = get_api_client()
     
     # Use current context if no team specified
-    if not team_slug:
-        team_slug = get_context()
-        if not team_slug:
+    if not team_name:
+        team_name = get_context()
+        if not team_name:
             console.print("[red]Error:[/red] No team specified and no context set.")
             return
     
     try:
-        # First get team ID from slug
+        # First get team ID from name
         response = client.get("/teams")
         if response.status_code != 200:
             console.print(f"[red]Error:[/red] Could not load teams")
             return
         
         teams = response.json()
-        team = next((t for t in teams if t["slug"] == team_slug), None)
+        team = next((t for t in teams if t["name"] == team_name), None)
         
         if not team:
-            console.print(f"[red]Error:[/red] Team '{team_slug}' not found")
+            console.print(f"[red]Error:[/red] Team '{team_name}' not found")
             return
         
         # Get members
@@ -313,30 +310,30 @@ def list_members(
 def add_member(
     username: str = typer.Argument(..., help="Username to add"),
     role: str = typer.Option("viewer", "--role", "-r", help="Role to assign"),
-    team_slug: str = typer.Option(None, "--team", "-t", help="Team slug (optional, uses current context)")
+    team_name: str = typer.Option(None, "--team", "-t", help="Team name (optional, uses current context)")
 ):
     """Add a user to a team."""
     client = get_api_client()
     
     # Use current context if no team specified
-    if not team_slug:
-        team_slug = get_context()
-        if not team_slug:
+    if not team_name:
+        team_name = get_context()
+        if not team_name:
             console.print("[red]Error:[/red] No team specified and no context set.")
             return
 
     try:
-        # First get team ID from slug
+        # First get team ID from name
         response = client.get("/teams")
         if response.status_code != 200:
             console.print(f"[red]Error:[/red] Could not load teams")
             return
         
         teams = response.json()
-        team = next((t for t in teams if t["slug"] == team_slug), None)
+        team = next((t for t in teams if t["name"] == team_name), None)
         
         if not team:
-            console.print(f"[red]Error:[/red] Team '{team_slug}' not found")
+            console.print(f"[red]Error:[/red] Team '{team_name}' not found")
             return
             
         # Add member
@@ -363,30 +360,30 @@ def add_member(
 @app.command(name="remove-member")
 def remove_member(
     username: str = typer.Argument(..., help="Username to remove"),
-    team_slug: str = typer.Option(None, "--team", "-t", help="Team slug (optional, uses current context)")
+    team_name: str = typer.Option(None, "--team", "-t", help="Team name (optional, uses current context)")
 ):
     """Remove a user from a team."""
     client = get_api_client()
     
     # Use current context if no team specified
-    if not team_slug:
-        team_slug = get_context()
-        if not team_slug:
+    if not team_name:
+        team_name = get_context()
+        if not team_name:
             console.print("[red]Error:[/red] No team specified and no context set.")
             return
 
     try:
-        # First get team ID from slug
+        # First get team ID from name
         response = client.get("/teams")
         if response.status_code != 200:
             console.print(f"[red]Error:[/red] Could not load teams")
             return
         
         teams = response.json()
-        team = next((t for t in teams if t["slug"] == team_slug), None)
+        team = next((t for t in teams if t["name"] == team_name), None)
         
         if not team:
-            console.print(f"[red]Error:[/red] Team '{team_slug}' not found")
+            console.print(f"[red]Error:[/red] Team '{team_name}' not found")
             return
             
         # Resolve username to ID

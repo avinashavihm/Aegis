@@ -40,6 +40,10 @@ app.add_typer(role.app, name="role", help="Manage roles")
 app.add_typer(policy.app, name="policy", help="Manage policies")
 app.command()(login)
 
+# Import and add change-password as top-level command
+from src.commands.user import change_password
+app.command(name="change-password")(change_password)
+
 @app.command()
 def attach_user_role(
     user: str = typer.Option(..., "--user", "-u", help="Username or user ID"),
@@ -72,7 +76,7 @@ def attach_user_role(
 
 @app.command()
 def attach_team_role(
-    team: str = typer.Option(..., "--team", "-t", help="Team name or slug"),
+    team: str = typer.Option(..., "--team", "-t", help="Team name"),
     role: str = typer.Option(..., "--role", "-r", help="Role name or ID")
 ):
     """Attach a role to a team (inherited by all members)."""
@@ -84,14 +88,14 @@ def attach_team_role(
     client = get_api_client()
     
     try:
-        # First get team ID from slug
+        # First get team ID from name
         response = client.get("/teams")
         if response.status_code != 200:
             console.print(f"[red]Error:[/red] Could not load teams")
             return
         
         teams = response.json()
-        team_obj = next((t for t in teams if t["slug"] == team or t["name"] == team), None)
+        team_obj = next((t for t in teams if t["name"] == team), None)
         
         if not team_obj:
             console.print(f"[red]Error:[/red] Team '{team}' not found")
@@ -146,10 +150,10 @@ def attach_role_policy(
 
 @app.command()
 def edit(
-    resource_type: str = typer.Argument(..., help="Resource type (role, policy, team, user)"),
-    identifier: str = typer.Argument(..., help="Resource identifier (name or ID)")
+    resource_type: str = typer.Argument(..., help="Resource type (role/roles, policy/policies, team/teams, user/users)"),
+    identifier: Optional[str] = typer.Argument(None, help="Resource identifier (name or ID) - omit to edit all")
 ):
-    """Edit a resource in your default editor (like kubectl edit)."""
+    """Edit resource(s) in your default editor (like kubectl edit)."""
     import os
     import tempfile
     import subprocess
@@ -162,44 +166,127 @@ def edit(
     client = get_api_client()
     
     # Map resource types to endpoints
-    resource_map = {
+    singular_map = {
         "role": "/roles",
-        "roles": "/roles",
         "policy": "/policies",
-        "policies": "/policies",
         "team": "/teams",
+        "user": "/users"
+    }
+    
+    plural_map = {
+        "roles": "/roles",
+        "policies": "/policies",
         "teams": "/teams",
-        "user": "/users",
         "users": "/users"
     }
     
     resource_type = resource_type.lower()
-    if resource_type not in resource_map:
-        console.print(f"[red]Error:[/red] Unknown resource type: {resource_type}")
-        console.print("Valid types: role, policy, team, user")
+    is_plural = resource_type in plural_map
+    
+    # If plural and no identifier, edit all resources
+    if is_plural and not identifier:
+        endpoint = plural_map[resource_type]
+        
+        try:
+            # Fetch all resources
+            response = client.get(endpoint)
+            
+            if response.status_code == 401:
+                console.print("[red]Error:[/red] Not authenticated. Please login first.")
+                return
+            
+            if response.status_code != 200:
+                try:
+                    error_detail = response.json().get('detail', response.text)
+                except:
+                    error_detail = response.text
+                console.print(f"[red]Error:[/red] Could not fetch {resource_type}: {error_detail}")
+                return
+            
+            resources_data = response.json()
+            
+            # Remove IDs and timestamps from all resources
+            clean_data = []
+            for item in resources_data:
+                clean_item = {k: v for k, v in item.items() 
+                             if k not in ['id', 'created_at', 'updated_at', 'team_id', 'user_id', 'role_id', 'policy_id', 'owner_id']}
+                clean_data.append(clean_item)
+            
+            # Create a temp file with YAML content
+            editor = os.environ.get('EDITOR', 'vim')
+            
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as tf:
+                temp_path = tf.name
+                tf.write(f"# Edit {resource_type}\n")
+                tf.write(f"# Save and close to apply changes\n")
+                tf.write(f"# You can modify, add, or remove items\n\n")
+                yaml.dump(clean_data, tf, default_flow_style=False, sort_keys=False)
+            
+            try:
+                # Open editor
+                subprocess.call([editor, temp_path])
+                
+                # Read back the edited content
+                with open(temp_path, 'r') as f:
+                    lines = [line for line in f.readlines() if not line.strip().startswith('#')]
+                    edited_data = yaml.safe_load(''.join(lines))
+                
+                if edited_data == clean_data:
+                    console.print("[yellow]No changes made.[/yellow]")
+                    return
+                
+                console.print("[yellow]Note:[/yellow] Bulk updates not yet implemented. Use single resource edit for now.")
+                
+            finally:
+                os.unlink(temp_path)
+                
+        except httpx.ConnectError:
+            console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
+        except Exception as e:
+            console.print(f"[red]Error:[/red] {e}")
         return
     
-    endpoint = resource_map[resource_type]
+    # Single resource edit
+    if not identifier:
+        console.print(f"[red]Error:[/red] Please specify a {resource_type} name/ID or use plural form to edit all")
+        return
+    
+    endpoint = singular_map.get(resource_type, plural_map.get(resource_type))
+    if not endpoint:
+        console.print(f"[red]Error:[/red] Unknown resource type: {resource_type}")
+        console.print("Valid types: role/roles, policy/policies, team/teams, user/users")
+        return
     
     try:
         # Fetch the resource
         response = client.get(f"{endpoint}/{identifier}")
         
+        if response.status_code == 401:
+            console.print("[red]Error:[/red] Not authenticated. Please login first.")
+            return
+        
         if response.status_code != 200:
-            console.print(f"[red]Error:[/red] Could not fetch {resource_type}: {response.text}")
+            try:
+                error_detail = response.json().get('detail', response.text)
+            except:
+                error_detail = response.text
+            console.print(f"[red]Error:[/red] Could not fetch {resource_type}: {error_detail}")
             return
         
         resource_data = response.json()
+        
+        # Remove IDs and timestamps
+        clean_data = {k: v for k, v in resource_data.items() 
+                     if k not in ['id', 'created_at', 'updated_at', 'team_id', 'user_id', 'role_id', 'policy_id', 'owner_id']}
         
         # Create a temp file with YAML content
         editor = os.environ.get('EDITOR', 'vim')
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as tf:
             temp_path = tf.name
-            # Add a comment at the top
             tf.write(f"# Edit {resource_type}: {identifier}\n")
             tf.write(f"# Save and close to apply changes\n\n")
-            yaml.dump(resource_data, tf, default_flow_style=False, sort_keys=False)
+            yaml.dump(clean_data, tf, default_flow_style=False, sort_keys=False)
         
         try:
             # Open editor
@@ -207,11 +294,10 @@ def edit(
             
             # Read back the edited content
             with open(temp_path, 'r') as f:
-                # Skip comment lines
                 lines = [line for line in f.readlines() if not line.strip().startswith('#')]
                 edited_data = yaml.safe_load(''.join(lines))
             
-            if edited_data == resource_data:
+            if edited_data == clean_data:
                 console.print("[yellow]No changes made.[/yellow]")
                 return
             
@@ -221,10 +307,13 @@ def edit(
             if response.status_code == 200:
                 console.print(f"[green]{resource_type.title()} '{identifier}' updated successfully![/green]")
             else:
-                console.print(f"[red]Error updating {resource_type}:[/red] {response.text}")
+                try:
+                    error_detail = response.json().get('detail', response.text)
+                except:
+                    error_detail = response.text
+                console.print(f"[red]Error updating {resource_type}:[/red] {error_detail}")
                 
         finally:
-            # Clean up temp file
             os.unlink(temp_path)
             
     except httpx.ConnectError:

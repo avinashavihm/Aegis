@@ -25,14 +25,14 @@ def list_roles(
     if team:
         current_context = get_context()
         if not current_context:
-            console.print("[red]Error:[/red] No team context set. Use 'aegis team set <slug>' or omit --team.")
+            console.print("[red]Error:[/red] No team context set. Use 'aegis team set <name>' or omit --team.")
             return
             
         try:
             response = client.get("/teams")
             if response.status_code == 200:
                 teams = response.json()
-                t = next((t for t in teams if t["slug"] == current_context), None)
+                t = next((t for t in teams if t["name"] == current_context), None)
                 if t:
                     params["team_id"] = t["id"]
                 else:
@@ -130,14 +130,14 @@ def create(
     if team:
         current_context = get_context()
         if not current_context:
-            console.print("[red]Error:[/red] No team context set. Use 'aegis team set <slug>'")
+            console.print("[red]Error:[/red] No team context set. Use 'aegis team set <name>'")
             return
             
         try:
             response = client.get("/teams")
             if response.status_code == 200:
                 teams = response.json()
-                t = next((t for t in teams if t["slug"] == current_context), None)
+                t = next((t for t in teams if t["name"] == current_context), None)
                 if t:
                     payload["team_id"] = t["id"]
                 else:

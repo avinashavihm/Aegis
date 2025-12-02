@@ -16,28 +16,23 @@ async def create_team(
 ):
     """Create a new team."""
     name = team.get("name")
-    slug = team.get("slug")
     
     if not name:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Team name is required"
         )
-        
-    # Auto-generate slug if not provided
-    if not slug:
-        slug = name.lower().replace(" ", "-")
     
     with get_db_connection(str(current_user_id)) as conn:
         with conn.cursor() as cur:
             try:
                 cur.execute(
                     """
-                    INSERT INTO teams (name, slug, owner_id)
-                    VALUES (%s, %s, %s)
-                    RETURNING id, name, slug, owner_id, created_at
+                    INSERT INTO teams (name, owner_id)
+                    VALUES (%s, %s)
+                    RETURNING id, name, owner_id, created_at
                     """,
-                    (name, slug, str(current_user_id))
+                    (name, str(current_user_id))
                 )
                 new_team = cur.fetchone()
                 
@@ -62,7 +57,7 @@ async def create_team(
                 if "unique constraint" in str(e):
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
-                        detail="Team slug already exists"
+                        detail="Team name already exists"
                     )
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -75,7 +70,7 @@ async def list_teams(current_user_id: UUID = Depends(get_current_user_id)):
     with get_db_connection(str(current_user_id)) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, name, slug, owner_id, created_at FROM teams"
+                "SELECT id, name, owner_id, created_at FROM teams"
             )
             teams = cur.fetchall()
             
@@ -83,17 +78,6 @@ async def list_teams(current_user_id: UUID = Depends(get_current_user_id)):
             result = []
             for team in teams:
                 team_dict = dict(team)
-                
-                # Get unique roles used in this team (by members)
-                cur.execute(
-                    """SELECT DISTINCT r.name
-                       FROM team_members tm
-                       JOIN roles r ON tm.role_id = r.id
-                       WHERE tm.team_id = %s
-                       ORDER BY r.name""",
-                    (team_dict['id'],)
-                )
-                member_roles = cur.fetchall()
                 
                 # Get roles assigned to the team itself
                 cur.execute(
@@ -117,12 +101,8 @@ async def list_teams(current_user_id: UUID = Depends(get_current_user_id)):
                 )
                 members = cur.fetchall()
                 
-                team_dict['member_roles'] = [r['name'] for r in member_roles]
                 team_dict['team_roles'] = [r['name'] for r in team_roles]
                 team_dict['members'] = [m['username'] for m in members]
-                
-                # For backward compatibility/CLI display
-                team_dict['roles'] = team_dict['member_roles'] 
                 
                 result.append(team_dict)
     
@@ -223,7 +203,7 @@ async def get_team(
     team_identifier: str,
     current_user_id: UUID = Depends(get_current_user_id)
 ):
-    """Get team by ID or name/slug."""
+    """Get team by ID or name."""
     with get_db_connection(str(current_user_id)) as conn:
         with conn.cursor() as cur:
             # Try to parse as UUID first
@@ -231,14 +211,14 @@ async def get_team(
                 UUID(team_identifier)
                 # It's a valid UUID, search by ID
                 cur.execute(
-                    "SELECT id, name, slug, owner_id, created_at FROM teams WHERE id = %s",
+                    "SELECT id, name, owner_id, created_at FROM teams WHERE id = %s",
                     (team_identifier,)
                 )
             except ValueError:
-                # Not a UUID, search by name or slug
+                # Not a UUID, search by name
                 cur.execute(
-                    "SELECT id, name, slug, owner_id, created_at FROM teams WHERE name = %s OR slug = %s",
-                    (team_identifier, team_identifier)
+                    "SELECT id, name, owner_id, created_at FROM teams WHERE name = %s",
+                    (team_identifier,)
                 )
             
             team_data = cur.fetchone()
@@ -273,7 +253,7 @@ async def update_team(
                 UPDATE teams 
                 SET name = %s 
                 WHERE id = %s
-                RETURNING id, name, slug, owner_id, created_at
+                RETURNING id, name, owner_id, created_at
                 """,
                 (name, str(team_id))
             )

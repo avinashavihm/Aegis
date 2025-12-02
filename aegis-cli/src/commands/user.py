@@ -358,3 +358,53 @@ def remove_role(
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
 
+
+@app.command(name="change-password")
+def change_password(
+    user_identifier: Optional[str] = typer.Argument(None, help="Username or user ID (optional, defaults to current user)"),
+    new_password: Optional[str] = typer.Option(None, "--password", "-p", help="New password (will be prompted if not provided)")
+):
+    """Change password for a user (admin can change any, users can change their own)."""
+    client = get_api_client()
+    
+    # If no user specified, change current user's password
+    if not user_identifier:
+        try:
+            response = client.get("/auth/me")
+            if response.status_code == 200:
+                current_user = response.json()
+                user_identifier = current_user["username"]
+            else:
+                console.print("[red]Error:[/red] Could not get current user")
+                return
+        except Exception as e:
+            console.print(f"[red]Error:[/red] {e}")
+            return
+    
+    # Prompt for password if not provided
+    if not new_password:
+        new_password = typer.prompt("New password", hide_input=True)
+        confirm_password = typer.prompt("Confirm password", hide_input=True)
+        if new_password != confirm_password:
+            console.print("[red]Error:[/red] Passwords do not match")
+            return
+    
+    try:
+        response = client.put(f"/users/{user_identifier}", json={
+            "password": new_password
+        })
+        
+        if response.status_code == 200:
+            console.print(f"[green]Password changed successfully for user '{user_identifier}'.[/green]")
+        elif response.status_code == 404:
+            console.print(f"[red]Error:[/red] User not found")
+        elif response.status_code == 403:
+            console.print(f"[red]Error:[/red] Access denied. You can only change your own password unless you're an admin.")
+        else:
+            console.print(f"[red]Error:[/red] {response.text}")
+            
+    except httpx.ConnectError:
+        console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+

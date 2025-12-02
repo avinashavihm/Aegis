@@ -35,14 +35,14 @@ def set_api_url(url: str):
     config["api_url"] = url
     save_config(config)
 
-def set_context(workspace_slug: str):
-    """Set current workspace context."""
+def set_context(team_name: str):
+    """Set current team context."""
     config = load_config()
-    config["current_context"] = workspace_slug
+    config["current_context"] = team_name
     save_config(config)
 
 def get_context() -> Optional[str]:
-    """Get current workspace context."""
+    """Get current team context."""
     config = load_config()
     return config.get("current_context")
 

@@ -23,7 +23,7 @@ async def list_users(current_user_id: UUID = Depends(get_current_user_id)):
                 
                 # Get teams and roles (through team membership)
                 cur.execute(
-                    """SELECT t.id as team_id, t.name as team_name, t.slug as team_slug, 
+                    """SELECT t.id as team_id, t.name as team_name, 
                               r.name as role_name
                        FROM team_members tm
                        JOIN teams t ON tm.team_id = t.id
@@ -85,7 +85,7 @@ async def get_user(
             # Fetch teams and roles
             cur.execute(
                 """
-                SELECT t.id, t.name, t.slug, r.name as role_name
+                SELECT t.id, t.name, r.name as role_name
                 FROM team_members tm
                 JOIN teams t ON tm.team_id = t.id
                 LEFT JOIN roles r ON tm.role_id = r.id
@@ -100,48 +100,76 @@ async def get_user(
             return result
 
 
-@router.put("/{user_id}")
+@router.put("/{user_identifier}")
 async def update_user(
-    user_id: UUID,
+    user_identifier: str,
     user_update: dict = Body(...),
-    current_user: dict = Depends(get_current_user)
+    current_user_id: UUID = Depends(get_current_user_id)
 ):
-    """Update user details (only self)."""
-    # Check if user is updating their own profile
-    if current_user["id"] != str(user_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only update your own profile"
-        )
-    
-    update_fields = []
-    values = []
-    
-    email = user_update.get("email")
-    full_name = user_update.get("full_name")
-    password = user_update.get("password")
-    
-    if email:
-        update_fields.append("email = %s")
-        values.append(email)
-    if full_name is not None:
-        update_fields.append("full_name = %s")
-        values.append(full_name)
-    if password:
-        from src.auth import hash_password
-        update_fields.append("password_hash = %s")
-        values.append(hash_password(password))
-    
-    if not update_fields:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No fields to update"
-        )
-    
-    values.append(str(user_id))
-    
-    with get_db_connection(str(current_user["id"])) as conn:
+    """Update user details (self or admin can update any)."""
+    with get_db_connection(str(current_user_id)) as conn:
         with conn.cursor() as cur:
+            # Check if current user is admin
+            cur.execute(
+                """SELECT EXISTS (
+                    SELECT 1 FROM user_roles ur
+                    JOIN roles r ON ur.role_id = r.id
+                    WHERE ur.user_id = %s AND r.name = 'admin'
+                )""",
+                (str(current_user_id),)
+            )
+            is_admin = cur.fetchone()['exists']
+            
+            # Resolve user_identifier to actual user_id
+            try:
+                target_user_id = UUID(user_identifier)
+                cur.execute("SELECT id FROM users WHERE id = %s", (str(target_user_id),))
+            except ValueError:
+                # Not a UUID, search by username
+                cur.execute("SELECT id FROM users WHERE username = %s", (user_identifier,))
+            
+            user_row = cur.fetchone()
+            if not user_row:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found"
+                )
+            
+            target_user_id = user_row['id']
+            
+            # Check if user is updating their own profile or is admin
+            if str(target_user_id) != str(current_user_id) and not is_admin:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You can only update your own profile"
+                )
+            
+            update_fields = []
+            values = []
+            
+            email = user_update.get("email")
+            full_name = user_update.get("full_name")
+            password = user_update.get("password")
+            
+            if email:
+                update_fields.append("email = %s")
+                values.append(email)
+            if full_name is not None:
+                update_fields.append("full_name = %s")
+                values.append(full_name)
+            if password:
+                from src.auth import hash_password
+                update_fields.append("password_hash = %s")
+                values.append(hash_password(password))
+            
+            if not update_fields:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No fields to update"
+                )
+            
+            values.append(str(target_user_id))
+            
             cur.execute(
                 f"""UPDATE users SET {', '.join(update_fields)} 
                    WHERE id = %s 
