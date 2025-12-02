@@ -139,37 +139,37 @@ async def update_user(
             
             # Check if user is updating their own profile or is admin
             if str(target_user_id) != str(current_user_id) and not is_admin:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You can only update your own profile"
-                )
-            
-            update_fields = []
-            values = []
-            
-            email = user_update.get("email")
-            full_name = user_update.get("full_name")
-            password = user_update.get("password")
-            
-            if email:
-                update_fields.append("email = %s")
-                values.append(email)
-            if full_name is not None:
-                update_fields.append("full_name = %s")
-                values.append(full_name)
-            if password:
-                from src.auth import hash_password
-                update_fields.append("password_hash = %s")
-                values.append(hash_password(password))
-            
-            if not update_fields:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="No fields to update"
-                )
-            
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only update your own profile"
+        )
+    
+    update_fields = []
+    values = []
+    
+    email = user_update.get("email")
+    full_name = user_update.get("full_name")
+    password = user_update.get("password")
+    
+    if email:
+        update_fields.append("email = %s")
+        values.append(email)
+    if full_name is not None:
+        update_fields.append("full_name = %s")
+        values.append(full_name)
+    if password:
+        from src.auth import hash_password
+        update_fields.append("password_hash = %s")
+        values.append(hash_password(password))
+    
+    if not update_fields:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No fields to update"
+        )
+    
             values.append(str(target_user_id))
-            
+    
             cur.execute(
                 f"""UPDATE users SET {', '.join(update_fields)} 
                    WHERE id = %s 

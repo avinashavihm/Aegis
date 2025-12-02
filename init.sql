@@ -108,47 +108,78 @@ CREATE INDEX idx_workspaces_name ON workspaces(name);
 CREATE INDEX idx_workspaces_owner_id ON workspaces(owner_id);
 
 -- Seed Default Policies (AWS IAM style with Effect: Allow/Deny)
+-- Policies use PascalCase naming convention
+-- Note: read, get, and list actions allow reading resource definitions and configurations
 INSERT INTO policies (name, description, content) VALUES
 (
-    'FullAccess',
-    'Full administrative access to everything',
-    '{"Version": "2012-10-17", "Statement": [{"Sid": "FullAccess", "Effect": "Allow", "Action": ["*"], "Resource": ["*"]}]}'
+    'AdministratorAccess',
+    'Full administrative access to all resources including definitions and configurations',
+    '{"Version": "2012-10-17", "Statement": [{"Sid": "AdministratorAccess", "Effect": "Allow", "Action": ["*"], "Resource": ["*"]}]}'
 ),
 (
-    'TeamManage',
-    'Can manage team settings and members',
-    '{"Version": "2012-10-17", "Statement": [{"Sid": "TeamManage", "Effect": "Allow", "Action": ["team:read", "team:update", "member:read", "member:add", "member:remove", "member:update"], "Resource": ["*"]}]}'
+    'TeamManagement',
+    'Full access to manage teams and team members, including reading team definitions and configurations',
+    '{"Version": "2012-10-17", "Statement": [{"Sid": "TeamManagement", "Effect": "Allow", "Action": ["team:create", "team:modify", "team:get", "team:list", "team:read", "team:delete", "member:create", "member:modify", "member:get", "member:list", "member:read", "member:delete"], "Resource": ["*"]}]}'
 ),
 (
-    'ReadOnly',
-    'Read-only access',
-    '{"Version": "2012-10-17", "Statement": [{"Sid": "ReadOnly", "Effect": "Allow", "Action": ["*:read"], "Resource": ["*"]}]}'
+    'ReadOnlyAccess',
+    'Read-only access to all resources: allows reading definitions, configurations, and metadata',
+    '{"Version": "2012-10-17", "Statement": [{"Sid": "ReadOnlyAccess", "Effect": "Allow", "Action": ["*:read", "*:list", "*:get"], "Resource": ["*"]}]}'
 ),
 (
-    'DeployAccess',
-    'Can deploy and manage deployments',
-    '{"Version": "2012-10-17", "Statement": [{"Sid": "DeployAccess", "Effect": "Allow", "Action": ["team:read", "deployment:*"], "Resource": ["*"]}]}'
+    'DeploymentManagement',
+    'Full access to manage deployments and view team information including definitions and configurations',
+    '{"Version": "2012-10-17", "Statement": [{"Sid": "DeploymentManagement", "Effect": "Allow", "Action": ["team:read", "team:list", "team:get", "deployment:create", "deployment:modify", "deployment:get", "deployment:list", "deployment:read", "deployment:delete"], "Resource": ["*"]}]}'
+),
+(
+    'WorkspaceManagement',
+    'Full access to create and manage workspaces (agents & workflows), including reading workspace definitions and configurations (content field), deletion denied',
+    '{"Version": "2012-10-17", "Statement": [{"Sid": "WorkspaceManagement", "Effect": "Allow", "Action": ["workspace:create", "workspace:modify", "workspace:get", "workspace:list", "workspace:read"], "Resource": ["workspace:*"]}, {"Sid": "DenyWorkspaceDelete", "Effect": "Deny", "Action": ["workspace:delete"], "Resource": ["workspace:*"]}]}'
+),
+(
+    'UserManagement',
+    'Full access to manage users including reading user definitions and configurations, deletion denied',
+    '{"Version": "2012-10-17", "Statement": [{"Sid": "UserManagement", "Effect": "Allow", "Action": ["user:create", "user:modify", "user:get", "user:list", "user:read"], "Resource": ["user:*"]}, {"Sid": "DenyUserDelete", "Effect": "Deny", "Action": ["user:delete"], "Resource": ["user:*"]}]}'
+),
+(
+    'RoleAndPolicyViewer',
+    'Read-only access to view roles and policies: allows reading role definitions, policy definitions, and full policy configurations (JSON content)',
+    '{"Version": "2012-10-17", "Statement": [{"Sid": "RoleAndPolicyViewer", "Effect": "Allow", "Action": ["role:get", "role:list", "role:read", "policy:get", "policy:list", "policy:read"], "Resource": ["*"]}]}'
 );
 
 -- Seed Default Roles (Linked to Policies)
+-- Roles use kebab-case naming convention
+-- Note: Roles with read access allow reading resource definitions and configurations
 INSERT INTO roles (name, description) VALUES
-('admin', 'Full administrative access'),
-('editor', 'Can manage team settings'),
-('viewer', 'Read-only access'),
-('deployer', 'Can deploy applications');
+('administrator', 'Full administrative access to all resources including definitions and configurations'),
+('team-manager', 'Full access to manage teams and team members, including reading team definitions and configurations'),
+('read-only-viewer', 'Read-only access to all resources: can read definitions, configurations, and metadata'),
+('deployment-manager', 'Full access to manage deployments and view team information including definitions and configurations'),
+('workspace-manager', 'Full access to manage workspaces (agents & workflows), including reading workspace definitions and configurations (content field)'),
+('user-manager', 'Full access to manage users including reading user definitions and configurations'),
+('role-viewer', 'Read-only access to view roles and policies: can read role definitions, policy definitions, and full policy configurations (JSON content)');
 
 -- Link Roles to Policies
 INSERT INTO role_policies (role_id, policy_id)
-SELECT r.id, p.id FROM roles r, policies p WHERE r.name = 'admin' AND p.name = 'FullAccess';
+SELECT r.id, p.id FROM roles r, policies p WHERE r.name = 'administrator' AND p.name = 'AdministratorAccess';
 
 INSERT INTO role_policies (role_id, policy_id)
-SELECT r.id, p.id FROM roles r, policies p WHERE r.name = 'editor' AND p.name = 'TeamManage';
+SELECT r.id, p.id FROM roles r, policies p WHERE r.name = 'team-manager' AND p.name = 'TeamManagement';
 
 INSERT INTO role_policies (role_id, policy_id)
-SELECT r.id, p.id FROM roles r, policies p WHERE r.name = 'viewer' AND p.name = 'ReadOnly';
+SELECT r.id, p.id FROM roles r, policies p WHERE r.name = 'read-only-viewer' AND p.name = 'ReadOnlyAccess';
 
 INSERT INTO role_policies (role_id, policy_id)
-SELECT r.id, p.id FROM roles r, policies p WHERE r.name = 'deployer' AND p.name = 'DeployAccess';
+SELECT r.id, p.id FROM roles r, policies p WHERE r.name = 'deployment-manager' AND p.name = 'DeploymentManagement';
+
+INSERT INTO role_policies (role_id, policy_id)
+SELECT r.id, p.id FROM roles r, policies p WHERE r.name = 'workspace-manager' AND p.name = 'WorkspaceManagement';
+
+INSERT INTO role_policies (role_id, policy_id)
+SELECT r.id, p.id FROM roles r, policies p WHERE r.name = 'user-manager' AND p.name = 'UserManagement';
+
+INSERT INTO role_policies (role_id, policy_id)
+SELECT r.id, p.id FROM roles r, policies p WHERE r.name = 'role-viewer' AND p.name = 'RoleAndPolicyViewer';
 
 -- Create root user with admin role (bypassing RLS temporarily)
 ALTER TABLE users DISABLE ROW LEVEL SECURITY;
@@ -157,9 +188,9 @@ ALTER TABLE user_roles DISABLE ROW LEVEL SECURITY;
 INSERT INTO users (username, email, password_hash, full_name) VALUES
 ('root', 'root@aegis.local', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5ysY3H1.5C0LW', 'Root Administrator');
 
--- Assign admin role to root user
+-- Assign administrator role to root user
 INSERT INTO user_roles (user_id, role_id)
-SELECT u.id, r.id FROM users u, roles r WHERE u.username = 'root' AND r.name = 'admin';
+SELECT u.id, r.id FROM users u, roles r WHERE u.username = 'root' AND r.name = 'administrator';
 
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
@@ -186,14 +217,14 @@ ALTER TABLE role_policies FORCE ROW LEVEL SECURITY;
 ALTER TABLE team_roles FORCE ROW LEVEL SECURITY;
 ALTER TABLE workspaces FORCE ROW LEVEL SECURITY;
 
--- Helper function to check if current user has admin role
+-- Helper function to check if current user has administrator role
 CREATE OR REPLACE FUNCTION current_user_is_admin() RETURNS BOOLEAN AS $$
 BEGIN
     RETURN EXISTS (
         SELECT 1 FROM user_roles ur
         JOIN roles r ON ur.role_id = r.id
         WHERE ur.user_id = current_setting('app.current_user_id', true)::uuid
-        AND r.name = 'admin'
+        AND r.name = 'administrator'
     );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -212,6 +243,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- AWS IAM-style policy evaluation function
 -- Checks if user has permission for an action on a resource
 -- Deny statements have higher priority than Allow statements
+-- Note: read, get, and list actions allow reading resource definitions and configurations
 CREATE OR REPLACE FUNCTION evaluate_policy_permission(
     action_name TEXT,
     resource_type TEXT,
@@ -309,7 +341,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- RLS Policies (RBAC)
 
 -- 1. Users Table
--- Read: Admins see all, users with allow policy see users (unless denied)
+-- Read/List/Get: Admins see all, users with allow policy see users (unless denied)
+-- Read access allows viewing user definitions, profiles, email, and role assignments
 -- Deny has higher priority - if user has deny policy for a user, they can't see it
 CREATE POLICY users_read_own ON users
     FOR SELECT
@@ -318,6 +351,8 @@ CREATE POLICY users_read_own ON users
         OR current_setting('app.current_user_id', true) IS NULL
         OR current_setting('app.current_user_id', true) = ''
         OR evaluate_policy_permission('user:read', 'user', 'user:' || username)
+        OR evaluate_policy_permission('user:list', 'user', 'user:' || username)
+        OR evaluate_policy_permission('user:get', 'user', 'user:' || username)
     );
 
 -- Insert: Anyone can create a user (for registration), but they get no access until roles assigned
@@ -328,6 +363,7 @@ CREATE POLICY users_insert ON users
         current_setting('app.current_user_id', true) IS NULL 
         OR current_setting('app.current_user_id', true) = ''
         OR current_user_is_admin()
+        OR evaluate_policy_permission('user:create', 'user', NULL)
     );
 
 -- Update: Only admins can update users (zero-trust: no access without roles)
@@ -335,16 +371,28 @@ CREATE POLICY users_update_own ON users
     FOR UPDATE
     USING (
         current_user_is_admin()
+        OR evaluate_policy_permission('user:modify', 'user', 'user:' || username)
+    );
+
+-- Delete: Only admins can delete users
+CREATE POLICY users_delete ON users
+    FOR DELETE
+    USING (
+        current_user_is_admin()
+        OR evaluate_policy_permission('user:delete', 'user', 'user:' || username)
     );
 
 -- 2. Roles Table
--- Read: Admins see all, users with allow policy see roles (unless denied)
+-- Read/List/Get: Admins see all, users with allow policy see roles (unless denied)
+-- Read access allows viewing role definitions, descriptions, and attached policies
 -- Deny has higher priority - if user has deny policy for a role, they can't see it
 CREATE POLICY roles_read_access ON roles
     FOR SELECT
     USING (
         current_user_is_admin()
         OR evaluate_policy_permission('role:read', 'role', 'role:' || name)
+        OR evaluate_policy_permission('role:list', 'role', 'role:' || name)
+        OR evaluate_policy_permission('role:get', 'role', 'role:' || name)
     );
 
 -- Insert: Only admins can create roles (zero-trust: no access without roles)
@@ -352,6 +400,7 @@ CREATE POLICY roles_insert ON roles
     FOR INSERT
     WITH CHECK (
         current_user_is_admin()
+        OR evaluate_policy_permission('role:create', 'role', NULL)
     );
 
 -- Update: Only admins can update roles (zero-trust: no access without roles)
@@ -359,6 +408,7 @@ CREATE POLICY roles_update ON roles
     FOR UPDATE
     USING (
         current_user_is_admin()
+        OR evaluate_policy_permission('role:modify', 'role', 'role:' || name)
     );
 
 -- Delete: Only admins can delete roles (zero-trust: no access without roles)
@@ -366,10 +416,12 @@ CREATE POLICY roles_delete ON roles
     FOR DELETE
     USING (
         current_user_is_admin()
+        OR evaluate_policy_permission('role:delete', 'role', 'role:' || name)
     );
 
 -- 3. Teams Table
--- Read: Admins see all, users with allow policy see teams (unless denied)
+-- Read/List/Get: Admins see all, users with allow policy see teams (unless denied)
+-- Read access allows viewing team definitions, descriptions, and member information
 -- Deny has higher priority - if user has deny policy for a team, they can't see it
 CREATE POLICY teams_read_access ON teams
     FOR SELECT
@@ -377,6 +429,8 @@ CREATE POLICY teams_read_access ON teams
         current_user_is_admin()
         OR owner_id = current_setting('app.current_user_id', true)::uuid
         OR evaluate_policy_permission('team:read', 'team', 'team:' || name)
+        OR evaluate_policy_permission('team:list', 'team', 'team:' || name)
+        OR evaluate_policy_permission('team:get', 'team', 'team:' || name)
     );
 
 -- Insert: Any authenticated user can create a team (must be owner)
@@ -384,6 +438,7 @@ CREATE POLICY teams_insert ON teams
     FOR INSERT
     WITH CHECK (
         owner_id = current_setting('app.current_user_id', true)::uuid
+        OR evaluate_policy_permission('team:create', 'team', NULL)
     );
 
 -- Update: Owner can update. Members with permission handled by API (RLS allows if member for now to support fine-grained)
@@ -391,18 +446,50 @@ CREATE POLICY teams_insert ON teams
 -- we allow members to "see" the row for update, but API prevents actual change if no permission.
 -- To be safer, we restrict UPDATE to Owner only in RLS, and rely on Owner to delegate?
 -- No, that defeats the purpose of roles.
+CREATE POLICY teams_update ON teams
+    FOR UPDATE
+    USING (
+        current_user_is_admin()
+        OR owner_id = current_setting('app.current_user_id', true)::uuid
+        OR evaluate_policy_permission('team:modify', 'team', 'team:' || name)
+    );
+
+-- Delete: Owner or admin can delete
+CREATE POLICY teams_delete ON teams
+    FOR DELETE
+    USING (
+        current_user_is_admin()
+        OR owner_id = current_setting('app.current_user_id', true)::uuid
+        OR evaluate_policy_permission('team:delete', 'team', 'team:' || name)
+    );
 -- 4. Team Members Table
--- Read: Visible if member of the same team
+-- Read/List/Get: Visible if member of the same team
 CREATE POLICY team_members_read_access ON team_members
     FOR SELECT
     USING (
         user_id = current_setting('app.current_user_id', true)::uuid
         OR current_user_is_admin()
+        OR evaluate_policy_permission('member:read', 'member', NULL)
+        OR evaluate_policy_permission('member:list', 'member', NULL)
+        OR evaluate_policy_permission('member:get', 'member', NULL)
     );
 
--- Write: Only team owners or admins can manage members
-CREATE POLICY team_members_write_access ON team_members
-    FOR ALL
+-- Insert: Only team owners or admins can add members
+CREATE POLICY team_members_insert ON team_members
+    FOR INSERT
+    WITH CHECK (
+        current_user_is_admin()
+        OR EXISTS (
+            SELECT 1 FROM teams
+            WHERE id = team_id
+            AND owner_id = current_setting('app.current_user_id', true)::uuid
+        )
+        OR evaluate_policy_permission('member:create', 'member', NULL)
+    );
+
+-- Update: Only team owners or admins can modify members
+CREATE POLICY team_members_update ON team_members
+    FOR UPDATE
     USING (
         current_user_is_admin()
         OR EXISTS (
@@ -410,49 +497,98 @@ CREATE POLICY team_members_write_access ON team_members
             WHERE id = team_id
             AND owner_id = current_setting('app.current_user_id', true)::uuid
         )
+        OR evaluate_policy_permission('member:modify', 'member', NULL)
+    );
+
+-- Delete: Only team owners or admins can remove members
+CREATE POLICY team_members_delete ON team_members
+    FOR DELETE
+    USING (
+        current_user_is_admin()
+        OR EXISTS (
+            SELECT 1 FROM teams
+            WHERE id = team_id
+            AND owner_id = current_setting('app.current_user_id', true)::uuid
+        )
+        OR evaluate_policy_permission('member:delete', 'member', NULL)
     );
 
 -- 5. User Roles Table
--- Read: Admins see all, users see their own role assignments
+-- Read/List/Get: Admins see all, users see their own role assignments
 CREATE POLICY user_roles_read_access ON user_roles
     FOR SELECT
     USING (
         current_user_is_admin()
         OR user_id = current_setting('app.current_user_id', true)::uuid
+        OR evaluate_policy_permission('user_role:read', 'user_role', NULL)
+        OR evaluate_policy_permission('user_role:list', 'user_role', NULL)
+        OR evaluate_policy_permission('user_role:get', 'user_role', NULL)
     );
 
--- Write: Only admins can assign roles (simplified: allow for now, can be restricted later)
-CREATE POLICY user_roles_write_access ON user_roles
-    FOR ALL
-    USING (true);
+-- Insert: Only admins can assign roles (simplified: allow for now, can be restricted later)
+CREATE POLICY user_roles_insert ON user_roles
+    FOR INSERT
+    WITH CHECK (
+        current_user_is_admin()
+        OR evaluate_policy_permission('user_role:create', 'user_role', NULL)
+    );
+
+-- Delete: Only admins can remove role assignments
+CREATE POLICY user_roles_delete ON user_roles
+    FOR DELETE
+    USING (
+        current_user_is_admin()
+        OR evaluate_policy_permission('user_role:delete', 'user_role', NULL)
+    );
 
 -- 6. Team Roles Table
--- Read: Only admins can see team roles (team membership checked in API layer)
+-- Read/List/Get: Only admins can see team roles (team membership checked in API layer)
 CREATE POLICY team_roles_read_access ON team_roles
     FOR SELECT
     USING (
         current_user_is_admin()
+        OR evaluate_policy_permission('team_role:read', 'team_role', NULL)
+        OR evaluate_policy_permission('team_role:list', 'team_role', NULL)
+        OR evaluate_policy_permission('team_role:get', 'team_role', NULL)
     );
 
--- Write: Team owners or admins
-CREATE POLICY team_roles_write_access ON team_roles
-    FOR ALL
-    USING (
-        EXISTS (
+-- Insert: Team owners or admins
+CREATE POLICY team_roles_insert ON team_roles
+    FOR INSERT
+    WITH CHECK (
+        current_user_is_admin()
+        OR EXISTS (
             SELECT 1 FROM teams
             WHERE id = team_id
             AND owner_id = current_setting('app.current_user_id', true)::uuid
         )
+        OR evaluate_policy_permission('team_role:create', 'team_role', NULL)
+    );
+
+-- Delete: Team owners or admins
+CREATE POLICY team_roles_delete ON team_roles
+    FOR DELETE
+    USING (
+        current_user_is_admin()
+        OR EXISTS (
+            SELECT 1 FROM teams
+            WHERE id = team_id
+            AND owner_id = current_setting('app.current_user_id', true)::uuid
+        )
+        OR evaluate_policy_permission('team_role:delete', 'team_role', NULL)
     );
 
 -- 7. Policies Table
--- Read: Admins see all, users with allow policy see policies (unless denied)
+-- Read/List/Get: Admins see all, users with allow policy see policies (unless denied)
+-- Read access allows viewing policy definitions, descriptions, and full policy content (JSON)
 -- Deny has higher priority - if user has deny policy for a policy, they can't see it
 CREATE POLICY policies_read_access ON policies
     FOR SELECT
     USING (
         current_user_is_admin()
         OR evaluate_policy_permission('policy:read', 'policy', 'policy:' || name)
+        OR evaluate_policy_permission('policy:list', 'policy', 'policy:' || name)
+        OR evaluate_policy_permission('policy:get', 'policy', 'policy:' || name)
     );
 
 -- Insert: Only admins can create policies (zero-trust: no access without roles)
@@ -460,6 +596,7 @@ CREATE POLICY policies_insert ON policies
     FOR INSERT
     WITH CHECK (
         current_user_is_admin()
+        OR evaluate_policy_permission('policy:create', 'policy', NULL)
     );
 
 -- Update: Only admins can update policies (zero-trust: no access without roles)
@@ -467,6 +604,7 @@ CREATE POLICY policies_update ON policies
     FOR UPDATE
     USING (
         current_user_is_admin()
+        OR evaluate_policy_permission('policy:modify', 'policy', 'policy:' || name)
     );
 
 -- Delete: Only admins can delete policies (zero-trust: no access without roles)
@@ -474,6 +612,7 @@ CREATE POLICY policies_delete ON policies
     FOR DELETE
     USING (
         current_user_is_admin()
+        OR evaluate_policy_permission('policy:delete', 'policy', 'policy:' || name)
     );
 
 -- 6. Role Policies Table
@@ -493,13 +632,16 @@ CREATE POLICY role_policies_read_access ON role_policies
     );
 
 -- 8. Workspaces Table
--- Read: Admins see all, owners see their own, users with allow policy see workspaces (unless denied)
+-- Read/List/Get: Admins see all, owners see their own, users with allow policy see workspaces (unless denied)
+-- Read access allows viewing workspace definitions, descriptions, and content (agent/workflow configurations)
 CREATE POLICY workspaces_read_access ON workspaces
     FOR SELECT
     USING (
         current_user_is_admin()
         OR owner_id = current_setting('app.current_user_id', true)::uuid
         OR evaluate_policy_permission('workspace:read', 'workspace', 'workspace:' || name)
+        OR evaluate_policy_permission('workspace:list', 'workspace', 'workspace:' || name)
+        OR evaluate_policy_permission('workspace:get', 'workspace', 'workspace:' || name)
     );
 
 -- Insert: Any authenticated user can create a workspace
@@ -507,6 +649,7 @@ CREATE POLICY workspaces_insert ON workspaces
     FOR INSERT
     WITH CHECK (
         owner_id = current_setting('app.current_user_id', true)::uuid
+        OR evaluate_policy_permission('workspace:create', 'workspace', NULL)
     );
 
 -- Update: Owner or admin can update
@@ -515,6 +658,16 @@ CREATE POLICY workspaces_update ON workspaces
     USING (
         current_user_is_admin()
         OR owner_id = current_setting('app.current_user_id', true)::uuid
+        OR evaluate_policy_permission('workspace:modify', 'workspace', 'workspace:' || name)
+    );
+
+-- Delete: Owner or admin can delete
+CREATE POLICY workspaces_delete ON workspaces
+    FOR DELETE
+    USING (
+        current_user_is_admin()
+        OR owner_id = current_setting('app.current_user_id', true)::uuid
+        OR evaluate_policy_permission('workspace:delete', 'workspace', 'workspace:' || name)
     );
 
 -- Trigger to update updated_at column automatically

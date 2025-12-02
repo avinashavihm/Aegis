@@ -50,14 +50,16 @@ The `get` command is the primary way to retrieve resources. It supports singular
 # List resources
 aegis get users
 aegis get roles
-aegis get teams (or 'ws')
+aegis get teams
+aegis get workspaces  # or 'ws' or 'workspace'
 aegis get policies
 
 # Get specific resource
 aegis get user yaswanth
-aegis get role admin
+aegis get role administrator
 aegis get team my-team
-aegis get policy FullAccess
+aegis get workspace my-workspace  # or 'ws my-workspace'
+aegis get policy AdministratorAccess
 ```
 
 ### User Management
@@ -73,6 +75,8 @@ aegis get user
 ```
 
 ### Team Management
+Teams are for organizing users and managing access control.
+
 ```bash
 # Create a team
 aegis team create "My Team"
@@ -89,12 +93,45 @@ aegis team members --team "My Team"
 # Add member to team
 aegis team add-member --team "My Team" --user username
 
+# Remove member from team
+aegis team remove-member --team "My Team" --user username
+
 # Attach role to team
 aegis attach-team-role --team "My Team" --role role-name
+
+# Detach role from team
+aegis detach-team-role --team "My Team" --role role-name
 ```
 
+### Workspace Management
+Workspaces are for storing agent and workflow configurations. They are separate from teams.
+
+```bash
+# Create a workspace
+aegis workspace create "My Workspace" --desc "Description"
+
+# List workspaces
+aegis get workspaces  # or 'aegis get ws' or 'aegis get workspace'
+
+# View workspace details (shows content with agents & workflows)
+aegis get workspace "My Workspace"  # or 'aegis get ws "My Workspace"'
+```
+
+**Note:** Workspaces store agent and workflow configurations in the `content` field (JSON format). The workspace owner can manage the content through the API.
+
 ### Policy Management
-Policies define permissions and are attached to roles. Policies use AWS IAM-style format.
+Policies define permissions and are attached to roles. Policies use AWS IAM-style format with granular CRUD actions.
+
+**Default Policies:**
+- `AdministratorAccess` - Full administrative access to all resources including definitions and configurations
+- `TeamManagement` - Full access to manage teams and team members, including reading team definitions and configurations
+- `ReadOnlyAccess` - Read-only access to all resources: allows reading definitions, configurations, and metadata
+- `DeploymentManagement` - Full access to manage deployments and view team information including definitions and configurations
+- `WorkspaceManagement` - Full access to create and manage workspaces (agents & workflows), including reading workspace definitions and configurations (content field), deletion denied
+- `UserManagement` - Full access to manage users including reading user definitions and configurations, deletion denied
+- `RoleAndPolicyViewer` - Read-only access to view roles and policies: allows reading role definitions, policy definitions, and full policy configurations (JSON content)
+
+**Note:** All policies with read access allow reading resource definitions and configurations, not just basic metadata.
 
 ```bash
 # List policies
@@ -141,27 +178,37 @@ aegis policy update MyPolicy -c '{"Version": "2012-10-17", "Statement": [...]}'
 
 **Multiple Policies File Example** (`policies.yaml`):
 ```yaml
-name: ReadOnlyPolicy
+name: ReadOnlyAccessPolicy
 description: Read-only access policy
 content:
   Version: "2012-10-17"
   Statement:
     - Sid: AllowRead
       Effect: Allow
-      Action: ["*:read"]
+      Action: ["*:read", "*:list", "*:get"]
       Resource: ["*"]
 ---
-name: WritePolicy
+name: WriteAccessPolicy
 description: Write access policy
 content:
   Version: "2012-10-17"
   Statement:
     - Sid: AllowWrite
       Effect: Allow
-      Action: ["*:write"]
+      Action: ["*:create", "*:modify"]
       Resource: ["*"]
 ---
-name: DenyPolicy
+name: FullManagementPolicy
+description: Full management access
+content:
+  Version: "2012-10-17"
+  Statement:
+    - Sid: AllowAll
+      Effect: Allow
+      Action: ["*:create", "*:modify", "*:get", "*:list", "*:read", "*:delete"]
+      Resource: ["*"]
+---
+name: DenyAllPolicy
 description: Deny all access
 content:
   Version: "2012-10-17"
@@ -172,6 +219,47 @@ content:
       Resource: ["*"]
 ```
 
+**Available Actions:**
+- `create` - Create new resources (INSERT operations)
+- `modify` - Update existing resources (UPDATE operations)
+- `get` - Retrieve a specific resource by ID/name (includes full definitions/configurations)
+- `list` - List multiple resources (includes basic information)
+- `read` - General read access to view resource definitions, configurations, and all metadata
+- `delete` - Delete resources (DELETE operations)
+
+**Read Access - Definitions and Configurations:**
+The `read`, `get`, and `list` actions allow users to read resource definitions and configurations:
+
+- **Workspaces**: Read access includes viewing the `content` field (agent/workflow configurations), name, description, and owner information
+- **Policies**: Read access includes viewing the full policy JSON content, policy definitions, name, and description
+- **Roles**: Read access includes viewing role definitions, descriptions, and attached policies
+- **Teams**: Read access includes viewing team definitions, descriptions, owner, and member information
+- **Users**: Read access includes viewing user profiles, email, full name, and role assignments
+- **Deployments**: Read access includes viewing deployment definitions and configurations
+
+**Important:** Read access means users can view complete resource definitions and configurations, not just basic metadata. This is essential for understanding how resources are configured and what they contain.
+
+**Action Format:**
+Actions follow the format: `resource_type:action` 
+
+**Examples:**
+- `workspace:create` - Create workspaces
+- `workspace:modify` - Update workspaces
+- `workspace:get` - Get a specific workspace
+- `workspace:list` - List all workspaces
+- `workspace:read` - General read access to workspaces
+- `workspace:delete` - Delete workspaces
+- `team:create`, `team:modify`, `team:delete` - Team management
+- `user:create`, `user:modify`, `user:delete` - User management
+- `role:create`, `role:modify`, `role:delete` - Role management
+- `policy:create`, `policy:modify`, `policy:delete` - Policy management
+- `member:create`, `member:delete` - Team member management
+
+**Wildcards:**
+- `*` - All actions for all resources
+- `*:read` - Read action for all resource types
+- `workspace:*` - All actions for workspace resources
+
 When using multiple policies in one file:
 - Use `---` to separate each policy document
 - Each document should have `name`, `description`, and `content` fields
@@ -180,17 +268,25 @@ When using multiple policies in one file:
 
 ### Role Management
 Roles are global and can be attached to users or teams. They link policies to define permissions.
-Default roles: `admin`, `editor`, `viewer`, `deployer`.
+
+**Default Roles:**
+- `administrator` - Full administrative access to all resources including definitions and configurations
+- `team-manager` - Full access to manage teams and team members, including reading team definitions and configurations
+- `read-only-viewer` - Read-only access to all resources: can read definitions, configurations, and metadata
+- `deployment-manager` - Full access to manage deployments and view team information including definitions and configurations
+- `workspace-manager` - Full access to manage workspaces (agents & workflows), including reading workspace definitions and configurations (content field)
+- `user-manager` - Full access to manage users including reading user definitions and configurations
+- `role-viewer` - Read-only access to view roles and policies: can read role definitions, policy definitions, and full policy configurations (JSON content)
 
 ```bash
 # List roles
 aegis get roles
 
 # Create a custom role with attached policies
-aegis role create custom-role --desc "Custom role description" --policy FullAccess --policy ReadOnly
+aegis role create custom-role --desc "Custom role description" --policy AdministratorAccess --policy ReadOnlyAccess
 
 # View role details and attached policies
-aegis get role admin
+aegis get role administrator
 
 # Attach role to user
 aegis attach-user-role --user username --role role-name
@@ -226,14 +322,50 @@ aegis team create "Production"
 aegis get teams
 
 # 5. View team members
-aegis team members
+aegis team members --team "Production"
 
-# 6. Create role and attach to user
-aegis role create developer --desc "Developer role" --policy DeployAccess
-aegis attach-user-role --user john --role developer
+# 6. Create workspace for agents/workflows
+aegis workspace create "Production Agents" --desc "Production agent workspace"
 
-# 7. Attach role to team
-aegis attach-team-role --team production --role developer
+# 7. List workspaces
+aegis get workspaces
+
+# 8. Create a custom policy with granular permissions
+cat > workspace-policy.json << EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowWorkspaceRead",
+      "Effect": "Allow",
+      "Action": ["workspace:read", "workspace:list", "workspace:get"],
+      "Resource": ["workspace:*"]
+    },
+    {
+      "Sid": "AllowWorkspaceCreate",
+      "Effect": "Allow",
+      "Action": ["workspace:create"],
+      "Resource": ["workspace:*"]
+    },
+    {
+      "Sid": "DenyWorkspaceDelete",
+      "Effect": "Deny",
+      "Action": ["workspace:delete"],
+      "Resource": ["workspace:*"]
+    }
+  ]
+}
+EOF
+aegis policy create WorkspaceManagement -f workspace-policy.json --desc "Can create and read workspaces but not delete"
+
+# 9. Create role and attach policy
+aegis role create workspace-manager --desc "Workspace manager role" --policy WorkspaceManagement
+
+# 10. Attach role to user
+aegis attach-user-role --user john --role workspace-manager
+
+# 11. Attach role to team (all team members inherit the role)
+aegis attach-team-role --team "Production" --role workspace-manager
 ```
 
 ## Configuration File
@@ -243,6 +375,45 @@ aegis attach-team-role --team production --role developer
 api_url: http://localhost:8000
 auth_token: eyJ0eXAiOiJKV1QiLCJhbGc...
 ```
+
+## Quick Reference
+
+### Resource Types
+- **Users** - System users who can authenticate
+- **Teams** - Groups of users for organization and access control
+- **Workspaces** - Containers for agent and workflow configurations (separate from teams)
+- **Roles** - Global collections of policies that define permissions
+- **Policies** - AWS IAM-style permission definitions with granular CRUD actions
+
+### Key Concepts
+
+**Teams vs Workspaces:**
+- **Teams** are for organizing users and managing access control
+- **Workspaces** are for storing agent and workflow configurations
+- A user can belong to multiple teams
+- A user can own multiple workspaces
+- Teams and workspaces are independent concepts
+
+**RBAC Model:**
+- Roles are **global** (not team-scoped)
+- Roles can be attached to **users** directly or to **teams** (inherited by team members)
+- Policies use AWS IAM-style format with `Allow` and `Deny` effects
+- `Deny` statements take priority over `Allow` statements
+- Actions: `create`, `modify`, `get`, `list`, `read`, `delete`
+
+**Read Access:**
+- `read`, `get`, and `list` actions allow reading resource **definitions and configurations**
+- Read access includes viewing complete resource data, not just basic metadata
+- For workspaces: includes viewing `content` field (agent/workflow configurations)
+- For policies: includes viewing full policy JSON content
+- For roles: includes viewing role definitions and attached policies
+- For teams: includes viewing team definitions and member information
+- For users: includes viewing user profiles and role assignments
+
+**Zero-Trust Security:**
+- Users without roles have **no access** by default
+- All access must be explicitly granted through roles and policies
+- Row Level Security (RLS) enforces permissions at the database level
 
 **Note:** Team context is no longer used. All commands require explicit team specification when needed.
 

@@ -18,8 +18,8 @@ def list_roles(
     if output:
         set_output_format(output)
     client = get_api_client()
-
-    try:
+    
+        try:
         response = client.get("/roles")
         
         if response.status_code != 200:
@@ -53,7 +53,7 @@ def list_roles(
                     "policies": policy_names,
                     "id": r["id"]
                 })
-            
+                
             print_output(
                 display_roles,
                 columns=["name", "description", "policies"],
@@ -102,7 +102,7 @@ def create(
         "name": name,
         "description": description,
         "policy_ids": resolved_policy_ids
-    } 
+    }
 
     try:
         response = client.post("/roles", json=payload)

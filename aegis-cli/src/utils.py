@@ -63,8 +63,8 @@ def print_output(data: Any, columns: List[str] = None, title: str = None):
             columns = list(data[0].keys())
         else:
             # No data and no columns specified
-            console.print("No data found.")
-            return
+        console.print("No data found.")
+        return
 
     # Show table with headers even if no data
     if current_output_format == OutputFormat.TABLE:
@@ -73,9 +73,9 @@ def print_output(data: Any, columns: List[str] = None, title: str = None):
             table.add_column(format_column_name(col), style="cyan")
         
         if data:
-            for item in data:
-                row = [str(item.get(col, "")) for col in columns]
-                table.add_row(*row)
+        for item in data:
+            row = [str(item.get(col, "")) for col in columns]
+            table.add_row(*row)
         
         console.print(table)
         
@@ -87,8 +87,8 @@ def print_output(data: Any, columns: List[str] = None, title: str = None):
             table.add_column(format_column_name(col), header_style="bold")
         
         if data:
-            for item in data:
-                row = [str(item.get(col, "")) for col in columns]
-                table.add_row(*row)
+        for item in data:
+            row = [str(item.get(col, "")) for col in columns]
+            table.add_row(*row)
             
         console.print(table)

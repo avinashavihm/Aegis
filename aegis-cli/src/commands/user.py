@@ -69,13 +69,13 @@ def login(
             
             # Ask for default output format only if not provided and in interactive mode
             if not output_format:
-                from src.utils import OutputFormat
-                output_format = typer.prompt(
-                    "output", 
-                    default="text", 
-                    show_choices=False,
-                    type=click.Choice([f.value for f in OutputFormat], case_sensitive=False)
-                )
+            from src.utils import OutputFormat
+            output_format = typer.prompt(
+                "output", 
+                default="text", 
+                show_choices=False,
+                type=click.Choice([f.value for f in OutputFormat], case_sensitive=False)
+            )
             set_default_output_format(output_format)
             
             console.print(f"[green]Login successful![/green] Welcome, {username}.")
@@ -224,10 +224,10 @@ def me(
                 "full_name": user.get("full_name", "")
             }
             
-            print_output(
+        print_output(
                 display_user,
                 columns=["username", "teams", "user_roles", "email", "full_name"],
-                title="Current User"
+            title="Current User"
             )
             
             # Show detailed team roles if present
@@ -237,7 +237,7 @@ def me(
                     user["teams"],
                     columns=["name", "role_name"],
                     title=None
-                )
+        )
         
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")

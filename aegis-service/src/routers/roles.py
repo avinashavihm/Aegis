@@ -36,10 +36,10 @@ async def create_role(
     with get_db_connection(str(current_user_id)) as conn:
         with conn.cursor() as cur:
             # Check for duplicate name
-            cur.execute(
+                cur.execute(
                 "SELECT id FROM roles WHERE name = %s",
-                (name,)
-            )
+                    (name,)
+                )
                 
             if cur.fetchone():
                 raise HTTPException(
@@ -78,11 +78,11 @@ async def list_roles(
     """
     with get_db_connection(str(current_user_id)) as conn:
         with conn.cursor() as cur:
-            cur.execute(
+                cur.execute(
                 """SELECT id, name, description, created_at 
-                   FROM roles 
-                   ORDER BY name"""
-            )
+                       FROM roles 
+                       ORDER BY name"""
+                )
             roles = cur.fetchall()
             
             # Fetch policies for each role

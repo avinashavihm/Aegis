@@ -141,16 +141,62 @@ Roles are global collections of policies that define permissions. Roles can be a
 
 | Role | Permissions |
 |------|-------------|
-| **admin** | Full administrative access to team, members, and data |
-| **editor** | Can manage team settings and members |
-| **viewer** | Read-only access to team and members |
-| **deployer** | Can deploy and manage deployments |
+| **administrator** | Full administrative access to all resources including definitions and configurations |
+| **team-manager** | Full access to manage teams and team members, including reading team definitions and configurations |
+| **read-only-viewer** | Read-only access to all resources: can read definitions, configurations, and metadata |
+| **deployment-manager** | Full access to manage deployments and view team information including definitions and configurations |
+| **workspace-manager** | Full access to manage workspaces (agents & workflows), including reading workspace definitions and configurations (content field) |
+| **user-manager** | Full access to manage users including reading user definitions and configurations |
+| **role-viewer** | Read-only access to view roles and policies: can read role definitions, policy definitions, and full policy configurations (JSON content) |
 
 **Key Points:**
 - All roles are **global** (not team-scoped)
 - Roles can be attached to **users** directly or to **teams** (inherited by team members)
 - Policies use AWS IAM-style format with `Allow` and `Deny` effects
 - `Deny` statements take priority over `Allow` statements
+
+**Available Actions:**
+- `create` - Create new resources
+- `modify` - Update existing resources
+- `get` - Retrieve a specific resource (includes full definitions/configurations)
+- `list` - List multiple resources (includes basic information)
+- `read` - Read access to view resource definitions, configurations, and all metadata
+- `delete` - Delete resources
+
+**Read Access - Definitions and Configurations:**
+The `read`, `get`, and `list` actions allow users to read resource definitions and configurations:
+
+- **Workspaces**: Read access includes viewing the `content` field (agent/workflow configurations), name, description, and owner information
+- **Policies**: Read access includes viewing the full policy JSON content, policy definitions, name, and description
+- **Roles**: Read access includes viewing role definitions, descriptions, and attached policies
+- **Teams**: Read access includes viewing team definitions, descriptions, owner, and member information
+- **Users**: Read access includes viewing user profiles, email, full name, and role assignments
+- **Deployments**: Read access includes viewing deployment definitions and configurations
+
+**Important:** Read access means users can view complete resource definitions and configurations, not just basic metadata. This is essential for understanding how resources are configured and what they contain.
+
+Actions follow the format: `resource_type:action` (e.g., `workspace:create`, `team:modify`, `user:delete`)
+
+**Example Policy:**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "WorkspaceReadWrite",
+      "Effect": "Allow",
+      "Action": ["workspace:create", "workspace:modify", "workspace:read", "workspace:list", "workspace:get"],
+      "Resource": ["workspace:*"]
+    },
+    {
+      "Sid": "DenyWorkspaceDelete",
+      "Effect": "Deny",
+      "Action": ["workspace:delete"],
+      "Resource": ["workspace:*"]
+    }
+  ]
+}
+```
 
 ## Development
 

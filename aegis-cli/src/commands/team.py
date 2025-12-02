@@ -63,7 +63,7 @@ def list_teams(
             return
         
         teams = response.json()
-
+        
         # Format roles and members for display
         for t in teams:
             # Rename id to team_id for display
@@ -111,7 +111,7 @@ def assign_role(
 ):
     """Assign a role to a team (inherited by all members)."""
     client = get_api_client()
-
+    
     try:
         # First get team ID from name
         response = client.get("/teams")
@@ -151,7 +151,7 @@ def remove_role(
 ):
     """Remove a role from a team."""
     client = get_api_client()
-
+    
     try:
         # First get team ID from name
         response = client.get("/teams")
@@ -244,7 +244,7 @@ def add_member(
 ):
     """Add a user to a team."""
     client = get_api_client()
-
+    
     try:
         # First get team ID from name
         response = client.get("/teams")
@@ -287,7 +287,7 @@ def remove_member(
 ):
     """Remove a user from a team."""
     client = get_api_client()
-
+    
     try:
         # First get team ID from name
         response = client.get("/teams")

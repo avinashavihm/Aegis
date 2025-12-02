@@ -26,7 +26,7 @@ def main(
     if output is None:
         from src.config import get_default_output_format
         output = OutputFormat(get_default_output_format())
-        set_output_format(output)
+    set_output_format(output)
     elif output.lower() != "wide":
         # Only set format if not wide (wide is handled per-command)
         try:
