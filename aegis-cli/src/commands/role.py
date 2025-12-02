@@ -5,7 +5,6 @@ from rich.syntax import Syntax
 import json
 from src.api_client import get_api_client
 from src.utils import print_output, OutputFormat, set_output_format
-from src.config import get_context
 import httpx
 import uuid
 
@@ -13,7 +12,7 @@ app = typer.Typer()
 console = Console()
 
 def list_roles(
-    team: bool = typer.Option(False, "--team", "-t", help="List roles for current team context"),
+    team_name: Optional[str] = typer.Option(None, "--team", "-t", help="Team name (to filter team-scoped roles)"),
     output: Optional[OutputFormat] = typer.Option(None, "--output", "-o", help="Output format")
 ):
     """List roles."""
@@ -22,22 +21,20 @@ def list_roles(
     client = get_api_client()
     
     params = {}
-    if team:
-        current_context = get_context()
-        if not current_context:
-            console.print("[red]Error:[/red] No team context set. Use 'aegis team set <name>' or omit --team.")
-            return
-            
+    if team_name:
         try:
             response = client.get("/teams")
             if response.status_code == 200:
                 teams = response.json()
-                t = next((t for t in teams if t["name"] == current_context), None)
+                t = next((t for t in teams if t["name"] == team_name), None)
                 if t:
                     params["team_id"] = t["id"]
                 else:
-                    console.print(f"[red]Error:[/red] Team '{current_context}' not found.")
+                    console.print(f"[red]Error:[/red] Team '{team_name}' not found.")
                     return
+            else:
+                console.print(f"[red]Error:[/red] Could not load teams")
+                return
         except Exception as e:
             console.print(f"[red]Error resolving team:[/red] {e}")
             return
@@ -93,7 +90,7 @@ def create(
     name: str,
     description: Optional[str] = typer.Option(None, "--desc", "-d", help="Role description"),
     policy_ids: Optional[List[str]] = typer.Option(None, "--policy", "-p", help="Policy IDs or Names to attach"),
-    team: bool = typer.Option(False, "--team", "-t", help="Create as team-specific role (uses current context)")
+    team_name: Optional[str] = typer.Option(None, "--team", "-t", help="Team name (for team-specific role)")
 ):
     """Create a new role."""
     client = get_api_client()
@@ -127,31 +124,30 @@ def create(
         "policy_ids": resolved_policy_ids
     }
     
-    if team:
-        current_context = get_context()
-        if not current_context:
-            console.print("[red]Error:[/red] No team context set. Use 'aegis team set <name>'")
-            return
-            
+    if team_name:
         try:
             response = client.get("/teams")
             if response.status_code == 200:
                 teams = response.json()
-                t = next((t for t in teams if t["name"] == current_context), None)
+                t = next((t for t in teams if t["name"] == team_name), None)
                 if t:
                     payload["team_id"] = t["id"]
                 else:
-                    console.print(f"[red]Error:[/red] Team '{current_context}' not found.")
+                    console.print(f"[red]Error:[/red] Team '{team_name}' not found.")
                     return
-        except Exception:
-            pass 
+            else:
+                console.print(f"[red]Error:[/red] Could not load teams")
+                return
+        except Exception as e:
+            console.print(f"[red]Error resolving team:[/red] {e}")
+            return 
 
     try:
         response = client.post("/roles", json=payload)
         
         if response.status_code == 201:
             role = response.json()
-            console.print(f"[green]Role created successfully![/green] ID: {role['id']}")
+            console.print(f"[green]Role created successfully![/green]")
         else:
             console.print(f"[red]Error creating role:[/red] {response.text}")
             
@@ -183,20 +179,26 @@ def show_role(
         
         from src.utils import current_output_format
         
-        # For structured formats, output the role data directly
+        # For structured formats, remove IDs
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
-            print_output(role)
+            clean_role = {
+                "name": role["name"],
+                "scope": "Team" if role.get("team_id") else "Global",
+                "description": role.get("description", "")
+            }
+            if "policies" in role:
+                clean_role["policies"] = [{"name": p.get("name", "")} for p in role["policies"]]
+            print_output(clean_role)
         else:
             # For text/table, show as a single-row table
             display_role = {
                 "name": role["name"],
-                "id": role["id"],
-                "scope": "Team" if role["team_id"] else "Global",
+                "scope": "Team" if role.get("team_id") else "Global",
                 "description": role["description"] or ""
             }
             print_output(
                 display_role,
-                columns=["name", "id", "scope", "description"]
+                columns=["name", "scope", "description"]
             )
             
             # Show attached policies
@@ -266,7 +268,6 @@ def update(
         if response.status_code == 200:
             role = response.json()
             console.print(f"[green]Role updated successfully![/green]")
-            console.print(f"ID: {role['id']}")
             console.print(f"Name: {role['name']}")
         elif response.status_code == 404:
             console.print(f"[red]Error:[/red] Role '{role_identifier}' not found")

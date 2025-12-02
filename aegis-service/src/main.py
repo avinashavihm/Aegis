@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.config import settings
-from src.routers import auth, users, teams, roles, policies
+from src.routers import auth, users, teams, roles, policies, workspaces
 
 app = FastAPI(
     title="Aegis API",
@@ -24,6 +24,7 @@ app.include_router(users.router)
 app.include_router(teams.router)
 app.include_router(roles.router)
 app.include_router(policies.router)
+app.include_router(workspaces.router)
 
 
 @app.get("/")

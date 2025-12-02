@@ -3,7 +3,6 @@ from typing import Optional
 from rich.console import Console
 from rich.table import Table
 from src.api_client import get_api_client
-from src.config import get_context, set_context
 from src.utils import OutputFormat, set_output_format
 import httpx
 
@@ -31,11 +30,7 @@ def create(
         
         if response.status_code == 201:
             team = response.json()
-            console.print(f"[green]Team created successfully![/green] ID: {team['id']}")
-            
-            # Auto-set context
-            set_context(name)
-            console.print(f"[blue]Context set to team: {name}[/blue]")
+            console.print(f"[green]Team created successfully![/green]")
         elif response.status_code == 400:
             console.print(f"[red]Error:[/red] {response.json()['detail']}")
         elif response.status_code == 401:
@@ -68,12 +63,9 @@ def list_teams(
             return
         
         teams = response.json()
-        
-        current_context = get_context()
 
-        # Add current context indicator and format roles
+        # Format roles and members for display
         for t in teams:
-            t[""] = "*" if t["name"] == current_context else ""
             # Rename id to team_id for display
             t["team_id"] = t["id"]
             # Format roles and members for display
@@ -115,17 +107,10 @@ def list_teams(
 @app.command(name="assign-role")
 def assign_role(
     role: str = typer.Argument(..., help="Role name or ID to assign"),
-    team_name: str = typer.Option(None, "--team", "-t", help="Team name (optional, uses current context)")
+    team_name: str = typer.Option(..., "--team", "-t", help="Team name")
 ):
     """Assign a role to a team (inherited by all members)."""
     client = get_api_client()
-    
-    # Use current context if no team specified
-    if not team_name:
-        team_name = get_context()
-        if not team_name:
-            console.print("[red]Error:[/red] No team specified and no context set.")
-            return
 
     try:
         # First get team ID from name
@@ -162,17 +147,10 @@ def assign_role(
 @app.command(name="remove-role")
 def remove_role(
     role: str = typer.Argument(..., help="Role name or ID to remove"),
-    team_name: str = typer.Option(None, "--team", "-t", help="Team name (optional, uses current context)")
+    team_name: str = typer.Option(..., "--team", "-t", help="Team name")
 ):
     """Remove a role from a team."""
     client = get_api_client()
-    
-    # Use current context if no team specified
-    if not team_name:
-        team_name = get_context()
-        if not team_name:
-            console.print("[red]Error:[/red] No team specified and no context set.")
-            return
 
     try:
         # First get team ID from name
@@ -207,65 +185,17 @@ def remove_role(
         console.print(f"[red]Error:[/red] {e}")
 
 
-@app.command(name="set")
-def set_team(name: str = typer.Argument(..., help="Team name")):
-    """Set the current team context."""
-    client = get_api_client()
-    
-    try:
-        # Verify team exists and user has access
-        response = client.get("/teams")
-        
-        if response.status_code == 401:
-            console.print("[red]Error:[/red] Not authenticated. Please login first.")
-            return
-        
-        if response.status_code != 200:
-            console.print(f"[red]Error:[/red] {response.text}")
-            return
-        
-        teams = response.json()
-        
-        # Check if team exists by name
-        team_exists = any(t["name"] == name for t in teams)
-        
-        if team_exists:
-            set_context(name)
-            console.print(f"[green]Context set to team: {name}[/green]")
-        else:
-            console.print(f"[red]Team '{name}' not found or you do not have access.[/red]")
-    except httpx.ConnectError:
-        console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
-    except Exception as e:
-        console.print(f"[red]Error setting context:[/red] {e}")
-
-
-@app.command(name="current")
-def get_current_team():
-    """Get the currently set team context."""
-    context = get_context()
-    if context:
-        console.print(context)
-    else:
-        console.print("[yellow]No team context set.[/yellow]")
 
 
 @app.command(name="members")
 def list_members(
-    team_name: str = typer.Argument(None, help="Team name (optional, uses current context if omitted)"),
+    team_name: str = typer.Argument(..., help="Team name"),
     output: Optional[OutputFormat] = typer.Option(None, "--output", "-o", help="Output format")
 ):
     """List members of a team."""
     if output:
         set_output_format(output)
     client = get_api_client()
-    
-    # Use current context if no team specified
-    if not team_name:
-        team_name = get_context()
-        if not team_name:
-            console.print("[red]Error:[/red] No team specified and no context set.")
-            return
     
     try:
         # First get team ID from name
@@ -310,17 +240,10 @@ def list_members(
 def add_member(
     username: str = typer.Argument(..., help="Username to add"),
     role: str = typer.Option("viewer", "--role", "-r", help="Role to assign"),
-    team_name: str = typer.Option(None, "--team", "-t", help="Team name (optional, uses current context)")
+    team_name: str = typer.Option(..., "--team", "-t", help="Team name")
 ):
     """Add a user to a team."""
     client = get_api_client()
-    
-    # Use current context if no team specified
-    if not team_name:
-        team_name = get_context()
-        if not team_name:
-            console.print("[red]Error:[/red] No team specified and no context set.")
-            return
 
     try:
         # First get team ID from name
@@ -360,17 +283,10 @@ def add_member(
 @app.command(name="remove-member")
 def remove_member(
     username: str = typer.Argument(..., help="Username to remove"),
-    team_name: str = typer.Option(None, "--team", "-t", help="Team name (optional, uses current context)")
+    team_name: str = typer.Option(..., "--team", "-t", help="Team name")
 ):
     """Remove a user from a team."""
     client = get_api_client()
-    
-    # Use current context if no team specified
-    if not team_name:
-        team_name = get_context()
-        if not team_name:
-            console.print("[red]Error:[/red] No team specified and no context set.")
-            return
 
     try:
         # First get team ID from name
@@ -437,14 +353,19 @@ def show_team(team_identifier: str, output: Optional[OutputFormat] = None):
         
         from src.utils import current_output_format, print_output
         
-        # For structured formats, output full data
+        # For structured formats, remove IDs
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
-            print_output(team)
+            clean_team = {
+                "name": team["name"],
+                "team_roles": [{"name": r.get("name", "")} for r in team.get("team_roles", [])],
+                "members": [{"username": m.get("username", "")} for m in team.get("members", [])]
+            }
+            print_output(clean_team)
         else:
             # For text/table, show as single-row table with name first
             print_output(
                 team,
-                columns=["name", "id", "owner_id"]
+                columns=["name"]
             )
             
     except httpx.ConnectError:

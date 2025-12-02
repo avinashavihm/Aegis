@@ -34,7 +34,7 @@ def create(
         
         if response.status_code == 201:
             policy = response.json()
-            console.print(f"[green]Policy created successfully![/green] ID: {policy['id']}")
+            console.print(f"[green]Policy created successfully![/green]")
         elif response.status_code == 400:
             console.print(f"[red]Error:[/red] {response.json()['detail']}")
         elif response.status_code == 401:
@@ -158,7 +158,6 @@ def update(
         if response.status_code == 200:
             policy = response.json()
             console.print(f"[green]Policy updated successfully![/green]")
-            console.print(f"ID: {policy['id']}")
             console.print(f"Name: {policy['name']}")
         elif response.status_code == 404:
             console.print(f"[red]Error:[/red] Policy '{policy_identifier}' not found")

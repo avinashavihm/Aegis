@@ -32,7 +32,7 @@ def create(
         
         if response.status_code == 201:
             user = response.json()
-            console.print(f"[green]User created successfully![/green] ID: {user['id']}")
+            console.print(f"[green]User created successfully![/green]")
         elif response.status_code == 400:
             console.print(f"[red]Error:[/red] {response.json()['detail']}")
         else:
@@ -45,8 +45,9 @@ def create(
 
 @app.command()
 def login(
-    username: Optional[str] = typer.Option(None, "--username", help="Username"),
-    password: Optional[str] = typer.Option(None, "--password", "-p", help="Password")
+    username: Optional[str] = typer.Option(None, "--username", "-u", help="Username"),
+    password: Optional[str] = typer.Option(None, "--password", "-p", help="Password"),
+    output_format: Optional[str] = typer.Option(None, "--output-format", help="Default output format (text/json/yaml/wide)")
 ):
     """Login to the system."""
     if not username:
@@ -66,14 +67,15 @@ def login(
             data = response.json()
             set_auth_token(data["access_token"])
             
-            # Ask for default output format
-            from src.utils import OutputFormat
-            output_format = typer.prompt(
-                "output", 
-                default="text", 
-                show_choices=False,
-                type=click.Choice([f.value for f in OutputFormat], case_sensitive=False)
-            )
+            # Ask for default output format only if not provided and in interactive mode
+            if not output_format:
+                from src.utils import OutputFormat
+                output_format = typer.prompt(
+                    "output", 
+                    default="text", 
+                    show_choices=False,
+                    type=click.Choice([f.value for f in OutputFormat], case_sensitive=False)
+                )
             set_default_output_format(output_format)
             
             console.print(f"[green]Login successful![/green] Welcome, {username}.")
@@ -153,14 +155,13 @@ def list_users(
                     "username": user["username"],
                     "teams": teams_str or "-",
                     "user_roles": user_roles_str or "-",
-                    "user_id": user["id"],
                     "email": user["email"],
                     "full_name": user.get("full_name", "")
                 })
             
             # Choose columns based on wide mode
             if wide_mode:
-                columns = ["username", "teams", "user_roles", "email", "full_name", "user_id"]
+                columns = ["username", "teams", "user_roles", "email", "full_name"]
             else:
                 columns = ["username", "teams", "user_roles"]
             
@@ -281,8 +282,7 @@ def show_user(user_identifier: str, output: Optional[OutputFormat] = None):
                 "teams": teams_str or "-",
                 "user_roles": user_roles_str or "-",
                 "email": user["email"],
-                "full_name": user.get("full_name", ""),
-                "user_id": user["id"]
+                "full_name": user.get("full_name", "")
             }
             
             # For text/table, show as single-row table with username first

@@ -35,17 +35,6 @@ def set_api_url(url: str):
     config["api_url"] = url
     save_config(config)
 
-def set_context(team_name: str):
-    """Set current team context."""
-    config = load_config()
-    config["current_context"] = team_name
-    save_config(config)
-
-def get_context() -> Optional[str]:
-    """Get current team context."""
-    config = load_config()
-    return config.get("current_context")
-
 def set_auth_token(token: str):
     """Store JWT authentication token."""
     config = load_config()

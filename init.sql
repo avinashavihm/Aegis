@@ -1,6 +1,20 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Create non-superuser for application (superusers bypass RLS!)
+-- The admin user created by POSTGRES_USER is superuser, we need a regular user
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_user WHERE usename = 'aegis_app') THEN
+        CREATE USER aegis_app WITH PASSWORD 'password123';
+        GRANT CONNECT ON DATABASE agentic_ops TO aegis_app;
+        GRANT USAGE ON SCHEMA public TO aegis_app;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO aegis_app;
+        GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO aegis_app;
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO aegis_app;
+    END IF;
+END $$;
+
 -- Users Table
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -12,11 +26,22 @@ CREATE TABLE users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Teams Table (formerly Workspaces)
+-- Teams Table
 CREATE TABLE teams (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(100) UNIQUE NOT NULL,
     owner_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Workspaces Table (for storing agents & workflows configuration, completely separate from teams)
+CREATE TABLE workspaces (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) UNIQUE NOT NULL,
+    description TEXT,
+    owner_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    content JSONB DEFAULT '{}', -- Stores agents and workflows configuration
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -49,7 +74,7 @@ CREATE TABLE role_policies (
     PRIMARY KEY (role_id, policy_id)
 );
 
--- Team Members Table (formerly Workspace Members)
+-- Team Members Table
 CREATE TABLE team_members (
     team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -82,6 +107,8 @@ CREATE INDEX idx_teams_owner_id ON teams(owner_id);
 CREATE INDEX idx_team_members_user_id ON team_members(user_id);
 CREATE INDEX idx_team_members_team_id ON team_members(team_id);
 CREATE INDEX idx_roles_team_id ON roles(team_id);
+CREATE INDEX idx_workspaces_name ON workspaces(name);
+CREATE INDEX idx_workspaces_owner_id ON workspaces(owner_id);
 
 -- Seed Default Policies
 INSERT INTO policies (name, description, content) VALUES
@@ -126,6 +153,20 @@ SELECT r.id, p.id FROM roles r, policies p WHERE r.name = 'viewer' AND p.name = 
 INSERT INTO role_policies (role_id, policy_id)
 SELECT r.id, p.id FROM roles r, policies p WHERE r.name = 'deployer' AND p.name = 'DeployAccess';
 
+-- Create root user with admin role (bypassing RLS temporarily)
+ALTER TABLE users DISABLE ROW LEVEL SECURITY;
+ALTER TABLE user_roles DISABLE ROW LEVEL SECURITY;
+
+INSERT INTO users (username, email, password_hash, full_name) VALUES
+('root', 'root@aegis.local', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5ysY3H1.5C0LW', 'Root Administrator');
+
+-- Assign admin role to root user
+INSERT INTO user_roles (user_id, role_id)
+SELECT u.id, r.id FROM users u, roles r WHERE u.username = 'root' AND r.name = 'admin';
+
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
+
 -- ZERO TRUST: Enable Row Level Security (RLS)
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
@@ -135,6 +176,18 @@ ALTER TABLE role_policies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE team_roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workspaces ENABLE ROW LEVEL SECURITY;
+
+-- Force RLS even for table owners (aegis_app user)
+ALTER TABLE users FORCE ROW LEVEL SECURITY;
+ALTER TABLE user_roles FORCE ROW LEVEL SECURITY;
+ALTER TABLE teams FORCE ROW LEVEL SECURITY;
+ALTER TABLE team_members FORCE ROW LEVEL SECURITY;
+ALTER TABLE roles FORCE ROW LEVEL SECURITY;
+ALTER TABLE policies FORCE ROW LEVEL SECURITY;
+ALTER TABLE role_policies FORCE ROW LEVEL SECURITY;
+ALTER TABLE team_roles FORCE ROW LEVEL SECURITY;
+ALTER TABLE workspaces FORCE ROW LEVEL SECURITY;
 
 -- Helper function to check if current user has admin role
 CREATE OR REPLACE FUNCTION current_user_is_admin() RETURNS BOOLEAN AS $$
@@ -148,50 +201,82 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Helper function to check if current user has any role (direct or via team)
+-- Uses SECURITY DEFINER to bypass RLS and avoid recursion
+CREATE OR REPLACE FUNCTION current_user_has_any_role() RETURNS BOOLEAN AS $$
+DECLARE
+    user_uuid UUID;
+BEGIN
+    user_uuid := current_setting('app.current_user_id', true)::uuid;
+    
+    -- Check direct user roles (bypass RLS)
+    IF EXISTS (
+        SELECT 1 FROM user_roles ur
+        WHERE ur.user_id = user_uuid
+    ) THEN
+        RETURN TRUE;
+    END IF;
+    
+    -- Check team membership (bypass RLS by using SECURITY DEFINER)
+    RETURN EXISTS (
+        SELECT 1 FROM team_members tm
+        WHERE tm.user_id = user_uuid
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- RLS Policies (RBAC)
 
 -- 1. Users Table
--- Read: Admins can see all users, regular users can only see their own profile
+-- Read: Admins can see all users, unauthenticated can see for login, authenticated non-admins see nothing
 CREATE POLICY users_read_own ON users
     FOR SELECT
     USING (
         current_user_is_admin()
-        OR id = current_setting('app.current_user_id', true)::uuid
+        OR current_setting('app.current_user_id', true) IS NULL
+        OR current_setting('app.current_user_id', true) = ''
     );
 
--- Update: Admins can update any user, users can update their own profile
+-- Insert: Anyone can create a user (for registration), but they get no access until roles assigned
+-- This allows unauthenticated registration (no app.current_user_id set)
+CREATE POLICY users_insert ON users
+    FOR INSERT
+    WITH CHECK (
+        current_setting('app.current_user_id', true) IS NULL 
+        OR current_setting('app.current_user_id', true) = ''
+        OR current_user_is_admin()
+    );
+
+-- Update: Only admins can update users (zero-trust: no access without roles)
 CREATE POLICY users_update_own ON users
     FOR UPDATE
     USING (
         current_user_is_admin()
-        OR id = current_setting('app.current_user_id', true)::uuid
     );
 
 -- 2. Roles Table
--- Read: Admins see all roles, global roles visible to all, team roles visible to team members
+-- Read: Admins see all, users with roles see global roles (team_id IS NULL)
+-- Team-scoped roles are handled via team membership checks in API layer
 CREATE POLICY roles_read_access ON roles
     FOR SELECT
     USING (
         current_user_is_admin()
-        OR team_id IS NULL
-        OR EXISTS (
-            SELECT 1 FROM team_members
-            WHERE team_id = roles.team_id
-            AND user_id = current_setting('app.current_user_id', true)::uuid
+        OR (
+            current_user_has_any_role()
+            AND team_id IS NULL  -- Global roles visible to users with any role
         )
     );
 
 -- 3. Teams Table
--- Read: Admins see all teams, others see teams they own or are members of
+-- Read: Admins see all, users with roles see teams they own
+-- Team membership access handled via team_members table RLS
 CREATE POLICY teams_read_access ON teams
     FOR SELECT
     USING (
         current_user_is_admin()
-        OR owner_id = current_setting('app.current_user_id', true)::uuid
-        OR EXISTS (
-            SELECT 1 FROM team_members
-            WHERE team_id = teams.id
-            AND user_id = current_setting('app.current_user_id', true)::uuid
+        OR (
+            current_user_has_any_role()
+            AND owner_id = current_setting('app.current_user_id', true)::uuid
         )
     );
 
@@ -212,35 +297,30 @@ CREATE POLICY teams_insert ON teams
 CREATE POLICY team_members_read_access ON team_members
     FOR SELECT
     USING (
-        EXISTS (
-            SELECT 1 FROM team_members tm
-            WHERE tm.team_id = team_members.team_id
-            AND tm.user_id = current_setting('app.current_user_id', true)::uuid
-        )
+        user_id = current_setting('app.current_user_id', true)::uuid
+        OR current_user_is_admin()
     );
 
--- Write: Team owner or members (with permissions) can manage members
--- (Simplified: checks if user is owner or member of the team)
+-- Write: Only team owners or admins can manage members
 CREATE POLICY team_members_write_access ON team_members
     FOR ALL
     USING (
-        EXISTS (
+        current_user_is_admin()
+        OR EXISTS (
             SELECT 1 FROM teams
             WHERE id = team_id
             AND owner_id = current_setting('app.current_user_id', true)::uuid
         )
-        OR EXISTS (
-            SELECT 1 FROM team_members existing_tm
-            WHERE existing_tm.team_id = team_id
-            AND existing_tm.user_id = current_setting('app.current_user_id', true)::uuid
-        )
     );
 
 -- 5. User Roles Table
--- Read: Users can see their own role assignments
+-- Read: Admins see all, users see their own role assignments
 CREATE POLICY user_roles_read_access ON user_roles
     FOR SELECT
-    USING (user_id = current_setting('app.current_user_id', true)::uuid);
+    USING (
+        current_user_is_admin()
+        OR user_id = current_setting('app.current_user_id', true)::uuid
+    );
 
 -- Write: Only admins can assign roles (simplified: allow for now, can be restricted later)
 CREATE POLICY user_roles_write_access ON user_roles
@@ -248,15 +328,11 @@ CREATE POLICY user_roles_write_access ON user_roles
     USING (true);
 
 -- 6. Team Roles Table
--- Read: Visible to team members
+-- Read: Only admins can see team roles (team membership checked in API layer)
 CREATE POLICY team_roles_read_access ON team_roles
     FOR SELECT
     USING (
-        EXISTS (
-            SELECT 1 FROM team_members
-            WHERE team_id = team_roles.team_id
-            AND user_id = current_setting('app.current_user_id', true)::uuid
-        )
+        current_user_is_admin()
     );
 
 -- Write: Team owners or admins
@@ -271,16 +347,61 @@ CREATE POLICY team_roles_write_access ON team_roles
     );
 
 -- 7. Policies Table
--- Read: Visible to all authenticated users
+-- Read: Admins see all, users with roles see policies attached to their direct roles
 CREATE POLICY policies_read_access ON policies
     FOR SELECT
-    USING (true);
+    USING (
+        current_user_is_admin()
+        OR (
+            current_user_has_any_role()
+            AND EXISTS (
+                SELECT 1 FROM role_policies rp
+                JOIN user_roles ur ON rp.role_id = ur.role_id
+                WHERE rp.policy_id = policies.id
+                AND ur.user_id = current_setting('app.current_user_id', true)::uuid
+            )
+        )
+    );
 
 -- 6. Role Policies Table
--- Read: Visible to all authenticated users
+-- Read: Admins see all, users see role policies for their direct roles
 CREATE POLICY role_policies_read_access ON role_policies
     FOR SELECT
-    USING (true);
+    USING (
+        current_user_is_admin()
+        OR (
+            current_user_has_any_role()
+            AND EXISTS (
+                SELECT 1 FROM user_roles ur
+                WHERE ur.role_id = role_policies.role_id
+                AND ur.user_id = current_setting('app.current_user_id', true)::uuid
+            )
+        )
+    );
+
+-- 8. Workspaces Table
+-- Read: Admins see all, owners see their own
+CREATE POLICY workspaces_read_access ON workspaces
+    FOR SELECT
+    USING (
+        current_user_is_admin()
+        OR owner_id = current_setting('app.current_user_id', true)::uuid
+    );
+
+-- Insert: Any authenticated user can create a workspace
+CREATE POLICY workspaces_insert ON workspaces
+    FOR INSERT
+    WITH CHECK (
+        owner_id = current_setting('app.current_user_id', true)::uuid
+    );
+
+-- Update: Owner or admin can update
+CREATE POLICY workspaces_update ON workspaces
+    FOR UPDATE
+    USING (
+        current_user_is_admin()
+        OR owner_id = current_setting('app.current_user_id', true)::uuid
+    );
 
 -- Trigger to update updated_at column automatically
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -298,5 +419,10 @@ CREATE TRIGGER update_users_updated_at
 
 CREATE TRIGGER update_teams_updated_at
     BEFORE UPDATE ON teams
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_workspaces_updated_at
+    BEFORE UPDATE ON workspaces
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();

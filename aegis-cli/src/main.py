@@ -1,6 +1,6 @@
 import typer
 from typing import Optional
-from src.commands import user, team, role, policy
+from src.commands import user, team, role, policy, workspace
 from src.commands.user import login
 from src.utils import OutputFormat, set_output_format
 
@@ -38,6 +38,7 @@ app.add_typer(user.app, name="user", help="Manage users")
 app.add_typer(team.app, name="team", help="Manage teams")
 app.add_typer(role.app, name="role", help="Manage roles")
 app.add_typer(policy.app, name="policy", help="Manage policies")
+app.add_typer(workspace.app, name="workspace", help="Manage workspaces (for agents & workflows)")
 app.command()(login)
 
 # Import and add change-password as top-level command
@@ -341,8 +342,10 @@ def get(
     
     # Normalize shorthand aliases
     alias_map = {
-        "ws": "teams",  # ws alias kept for backward compatibility/muscle memory, maps to teams
-        "wss": "teams",
+        "ws": "workspaces",  # ws = workspace (different from teams - for agents & workflows)
+        "wss": "workspaces",
+        "workspace": "workspaces",
+        "workspaces": "workspaces",
         "teams": "teams",
         "team": "team",
         "policies": "policies",
@@ -353,12 +356,12 @@ def get(
     # Handle plural forms for listing
     if resource_type == "roles":
         from src.commands.role import list_roles
-        list_roles(team=False, output=output)
+        list_roles(team_name=None, output=output)
     elif resource_type == "role":
         if not identifier:
             # Default to listing all roles
             from src.commands.role import list_roles
-            list_roles(team=False, output=output)
+            list_roles(team_name=None, output=output)
         else:
             from src.commands.role import show_role
             show_role(identifier, output)
@@ -394,9 +397,27 @@ def get(
             me(output)
         else:
             show_user(identifier, output)
+    elif resource_type == "workspaces":
+        from src.commands.workspace import list_workspaces
+        # Convert output format if needed
+        output_format = None
+        if output:
+            try:
+                output_format = OutputFormat(output.lower())
+            except ValueError:
+                pass
+        list_workspaces(output=output_format)
+    elif resource_type == "workspace":
+        if not identifier:
+            # Default to listing all workspaces
+            from src.commands.workspace import list_workspaces
+            list_workspaces(output=output)
+        else:
+            from src.commands.workspace import show_workspace
+            show_workspace(identifier, output)
     else:
         typer.echo(f"Unknown resource type: {resource_type}")
-        typer.echo("Valid types: role/roles, team/teams/ws, user/users, policy/policies")
+        typer.echo("Valid types: role/roles, team/teams, workspace/ws, user/users, policy/policies")
         raise typer.Exit(1)
 
 if __name__ == "__main__":
