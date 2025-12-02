@@ -12,8 +12,6 @@ import uuid
 app = typer.Typer()
 console = Console()
 
-@app.command(name="list")
-@app.command(name="ls")
 def list_roles(
     team: bool = typer.Option(False, "--team", "-t", help="List roles for current team context"),
     output: Optional[OutputFormat] = typer.Option(None, "--output", "-o", help="Output format")
@@ -64,14 +62,14 @@ def list_roles(
             for r in roles:
                 display_roles.append({
                     "name": r["name"],
-                    "id": r["id"],
                     "scope": "Team" if r["team_id"] else "Global",
-                    "description": r["description"] or ""
+                    "description": r["description"] or "",
+                    "id": r["id"]
                 })
                 
             print_output(
                 display_roles,
-                columns=["name", "id", "scope", "description"],
+                columns=["name", "scope", "description"],
                 title="Roles"
             )
 
@@ -84,8 +82,8 @@ def list_roles(
 @app.command()
 def create(
     name: str,
-    description: str = typer.Option(None, "--desc", "-d", help="Role description"),
-    policy_ids: List[str] = typer.Option([], "--policy", "-p", help="Policy IDs or Names to attach"),
+    description: Optional[str] = typer.Option(None, "--desc", "-d", help="Role description"),
+    policy_ids: Optional[List[str]] = typer.Option(None, "--policy", "-p", help="Policy IDs or Names to attach"),
     team: bool = typer.Option(False, "--team", "-t", help="Create as team-specific role (uses current context)")
 ):
     """Create a new role."""
@@ -208,7 +206,8 @@ def show_role(
 
 
 
-@app.command()
+@app.command(name="edit")
+@app.command(name="update", hidden=True)
 def update(
     role_identifier: str = typer.Argument(..., help="Role name or ID"),
     name: str = typer.Option(None, "--name", "-n", help="New name"),
@@ -286,6 +285,28 @@ def delete(role_identifier: str):
             console.print("[green]Role deleted successfully.[/green]")
         else:
             console.print(f"[red]Error deleting role:[/red] {response.text}")
+            
+    except httpx.ConnectError:
+        console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+
+def attach_policy(role_identifier: str, policy_identifier: str):
+    """Attach a policy to a role (internal function called by main command)."""
+    client = get_api_client()
+    
+    try:
+        response = client.post(f"/roles/{role_identifier}/policies/{policy_identifier}", json={})
+        
+        if response.status_code == 200:
+            console.print(f"[green]Policy '{policy_identifier}' attached to role '{role_identifier}'.[/green]")
+        elif response.status_code == 404:
+            console.print(f"[red]Error:[/red] Role or policy not found")
+        elif response.status_code == 409:
+            console.print(f"[red]Error:[/red] Policy already attached to this role")
+        else:
+            console.print(f"[red]Error:[/red] {response.text}")
             
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")

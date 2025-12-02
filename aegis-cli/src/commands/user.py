@@ -87,14 +87,30 @@ def login(
         console.print(f"[red]Error logging in:[/red] {e}")
 
 
-@app.command(name="list")
-@app.command(name="ls", hidden=True)
 def list_users(
-    output: Optional[OutputFormat] = typer.Option(None, "--output", "-o", help="Output format")
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Output format: json, yaml, wide")
 ):
     """List all users."""
+    from src.utils import print_output, current_output_format, OutputFormat
+    
+    # Determine if wide mode
+    wide_mode = False
     if output:
-        set_output_format(output)
+        if output.lower() == "wide":
+            wide_mode = True
+            # Set to default text format for wide
+            from src.config import get_default_output_format
+            default_format = get_default_output_format()
+            set_output_format(OutputFormat(default_format))
+        else:
+            # Handle json, yaml, text, table
+            try:
+                set_output_format(OutputFormat(output.lower()))
+            except ValueError:
+                console.print(f"[red]Error:[/red] Invalid output format: {output}")
+                console.print("Valid formats: json, yaml, wide")
+                return
+    
     client = get_api_client()
     
     try:
@@ -110,33 +126,37 @@ def list_users(
         
         users = response.json()
         
-        from src.utils import print_output, current_output_format, OutputFormat
-        
         # For structured formats, show full data
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
             print_output(users, title="Users")
         else:
-            # For table view, show teams and user_roles separately
+            # For table/text view, format the data
             display_users = []
             for user in users:
-                # Format teams (teams with roles)
-                teams_str = ", ".join([f"{t['team_name']} ({t['role_name']})" for t in user.get('teams', [])])
+                # Format teams (just team names, no roles)
+                teams_str = ", ".join([t['team_name'] for t in user.get('teams', [])])
                 
                 # Format direct roles
                 user_roles_str = ", ".join([r['name'] for r in user.get('roles', [])])
 
                 display_users.append({
                     "username": user["username"],
+                    "teams": teams_str or "-",
+                    "user_roles": user_roles_str or "-",
                     "user_id": user["id"],
                     "email": user["email"],
-                    "full_name": user.get("full_name", ""),
-                    "teams": teams_str or "-",
-                    "user_roles": user_roles_str or "-"
+                    "full_name": user.get("full_name", "")
                 })
+            
+            # Choose columns based on wide mode
+            if wide_mode:
+                columns = ["username", "teams", "user_roles", "email", "full_name", "user_id"]
+            else:
+                columns = ["username", "teams", "user_roles"]
             
             print_output(
                 display_users, 
-                columns=["username", "user_id", "email", "full_name", "teams", "user_roles"],
+                columns=columns,
                 title="Users"
             )
 
@@ -168,12 +188,38 @@ def me(
         
         user = response.json()
         
-        from src.utils import print_output
-        print_output(
-            user,
-            columns=["id", "username", "email", "full_name"],
-            title="Current User"
-        )
+        from src.utils import print_output, current_output_format
+        
+        # For structured formats, output full data
+        if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
+            print_output(user)
+        else:
+            # Format teams and roles like in show_user
+            teams_str = ", ".join([t.get('team_name', t.get('name', '')) for t in user.get('teams', [])])
+            user_roles_str = ", ".join([r['name'] for r in user.get('roles', [])])
+            
+            display_user = {
+                "username": user["username"],
+                "teams": teams_str or "-",
+                "user_roles": user_roles_str or "-",
+                "email": user["email"],
+                "full_name": user.get("full_name", "")
+            }
+            
+            print_output(
+                display_user,
+                columns=["username", "teams", "user_roles", "email", "full_name"],
+                title="Current User"
+            )
+            
+            # Show detailed team roles if present
+            if "teams" in user and user["teams"]:
+                console.print("\n[bold]Team Roles:[/bold]")
+                print_output(
+                    user["teams"],
+                    columns=["name", "role_name"],
+                    title=None
+                )
         
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
@@ -202,18 +248,31 @@ def show_user(user_identifier: str, output: Optional[OutputFormat] = None):
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
             print_output(user)
         else:
+            # Format teams and roles like in list view
+            teams_str = ", ".join([t.get('team_name', t.get('name', '')) for t in user.get('teams', [])])
+            user_roles_str = ", ".join([r['name'] for r in user.get('roles', [])])
+            
+            display_user = {
+                "username": user["username"],
+                "teams": teams_str or "-",
+                "user_roles": user_roles_str or "-",
+                "email": user["email"],
+                "full_name": user.get("full_name", ""),
+                "user_id": user["id"]
+            }
+            
             # For text/table, show as single-row table with username first
             print_output(
-                user,
-                columns=["username", "id", "email", "full_name"]
+                display_user,
+                columns=["username", "teams", "user_roles", "email", "full_name"]
             )
             
-            # Show teams and roles if present
+            # Show detailed team roles if present
             if "teams" in user and user["teams"]:
-                console.print("\n[bold]Teams & Roles:[/bold]")
+                console.print("\n[bold]Team Roles:[/bold]")
                 print_output(
                     user["teams"],
-                    columns=["name", "slug", "role_name"],
+                    columns=["name", "role_name"],
                     title=None
                 )
             

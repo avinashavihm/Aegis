@@ -46,9 +46,6 @@ def create(
     except Exception as e:
         console.print(f"[red]Error creating policy:[/red] {e}")
 
-@app.command(name="list")
-@app.command(name="ls")
-@app.command(name="get")
 def list_policies(
     output: Optional[OutputFormat] = typer.Option(None, "--output", "-o", help="Output format")
 ):
@@ -73,7 +70,7 @@ def list_policies(
         from src.utils import print_output
         print_output(
             policies,
-            columns=["name", "id", "description"],
+            columns=["name", "description"],
             title="Policies"
         )
     except httpx.ConnectError:

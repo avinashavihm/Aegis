@@ -51,9 +51,6 @@ def create(
         console.print(f"[red]Error creating team:[/red] {e}")
 
 
-@app.command(name="list")
-@app.command(name="ls")
-@app.command(name="get")
 def list_teams(
     output: Optional[OutputFormat] = typer.Option(None, "--output", "-o", help="Output format")
 ):
@@ -80,6 +77,8 @@ def list_teams(
         # Add current context indicator and format roles
         for t in teams:
             t[""] = "*" if t["slug"] == current_context else ""
+            # Rename id to team_id for display
+            t["team_id"] = t["id"]
             # Format roles and members for display
             t["team_roles"] = ", ".join(t.get("team_roles", [])) or "-"
             t["members"] = ", ".join(t.get("members", [])) or "-"
@@ -92,13 +91,13 @@ def list_teams(
                 t.pop("", None)
             print_output(
                 teams,
-                columns=["name", "id", "team_roles", "members"],
+                columns=["name", "team_roles", "members", "team_id"],
                 title="Teams"
             )
         else:
             print_output(
                 teams,
-                columns=["", "name", "id", "team_roles", "members"],
+                columns=["name", "team_roles", "members"],
                 title="Teams"
             )
     except httpx.ConnectError:

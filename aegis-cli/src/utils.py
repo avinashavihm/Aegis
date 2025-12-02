@@ -20,6 +20,18 @@ def set_output_format(format: OutputFormat):
     global current_output_format
     current_output_format = format
 
+def format_column_name(col: str) -> str:
+    """Format column name for display with proper capitalization."""
+    # Handle special patterns like *_id
+    parts = col.split('_')
+    formatted_parts = []
+    for part in parts:
+        if part.upper() == 'ID':
+            formatted_parts.append('ID')
+        else:
+            formatted_parts.append(part.title())
+    return '_'.join(formatted_parts)
+
 def print_output(data: Any, columns: List[str] = None, title: str = None):
     """
     Print data in the selected format.
@@ -45,34 +57,38 @@ def print_output(data: Any, columns: List[str] = None, title: str = None):
     if isinstance(data, dict):
         data = [data]
     
-    if not data:
-        console.print("No data found.")
-        return
+    # If columns not provided, try to get them from first item
+    if not columns:
+        if data:
+            columns = list(data[0].keys())
+        else:
+            # No data and no columns specified
+            console.print("No data found.")
+            return
 
-    # If columns not provided, use keys from first item
-    if not columns and data:
-        columns = list(data[0].keys())
-
+    # Show table with headers even if no data
     if current_output_format == OutputFormat.TABLE:
         table = Table(title=title)
         for col in columns:
-            table.add_column(col.title(), style="cyan")
+            table.add_column(format_column_name(col), style="cyan")
         
-        for item in data:
-            row = [str(item.get(col, "")) for col in columns]
-            table.add_row(*row)
+        if data:
+            for item in data:
+                row = [str(item.get(col, "")) for col in columns]
+                table.add_row(*row)
         
         console.print(table)
         
     elif current_output_format == OutputFormat.TEXT:
         # Aligned text output using rich Table with no borders
         # No title for text output as requested
-        table = Table(box=None, show_header=True, padding=(0, 2), title=None)
+        table = Table(box=None, show_header=True, padding=(0, 2, 0, 0), title=None, pad_edge=False)
         for col in columns:
-            table.add_column(col.title(), header_style="bold")
+            table.add_column(format_column_name(col), header_style="bold")
         
-        for item in data:
-            row = [str(item.get(col, "")) for col in columns]
-            table.add_row(*row)
+        if data:
+            for item in data:
+                row = [str(item.get(col, "")) for col in columns]
+                table.add_row(*row)
             
         console.print(table)
