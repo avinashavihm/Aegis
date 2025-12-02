@@ -26,6 +26,16 @@ env/
 ENV/
 .venv
 
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Node
+node_modules/
+dist-ssr/
+*.local
+
 # IDE
 .vscode/
 .idea/
@@ -53,4 +63,3 @@ Thumbs.db
 # Aegis specific
 casestudy_results/
 tmp_shell/
-
