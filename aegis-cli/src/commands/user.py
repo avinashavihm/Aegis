@@ -110,12 +110,35 @@ def list_users(
         
         users = response.json()
         
-        from src.utils import print_output
-        print_output(
-            users, 
-            columns=["username", "id", "email", "full_name"],
-            title="Users"
-        )
+        from src.utils import print_output, current_output_format, OutputFormat
+        
+        # For structured formats, show full data
+        if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
+            print_output(users, title="Users")
+        else:
+            # For table view, show teams and user_roles separately
+            display_users = []
+            for user in users:
+                # Format teams (teams with roles)
+                teams_str = ", ".join([f"{t['team_name']} ({t['role_name']})" for t in user.get('teams', [])])
+                
+                # Format direct roles
+                user_roles_str = ", ".join([r['name'] for r in user.get('roles', [])])
+
+                display_users.append({
+                    "username": user["username"],
+                    "user_id": user["id"],
+                    "email": user["email"],
+                    "full_name": user.get("full_name", ""),
+                    "teams": teams_str or "-",
+                    "user_roles": user_roles_str or "-"
+                })
+            
+            print_output(
+                display_users, 
+                columns=["username", "user_id", "email", "full_name", "teams", "user_roles"],
+                title="Users"
+            )
 
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
@@ -185,7 +208,70 @@ def show_user(user_identifier: str, output: Optional[OutputFormat] = None):
                 columns=["username", "id", "email", "full_name"]
             )
             
+            # Show teams and roles if present
+            if "teams" in user and user["teams"]:
+                console.print("\n[bold]Teams & Roles:[/bold]")
+                print_output(
+                    user["teams"],
+                    columns=["name", "slug", "role_name"],
+                    title=None
+                )
+            
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
+
+
+@app.command(name="assign-role")
+def assign_role(
+    user_identifier: str = typer.Argument(..., help="Username or user ID"),
+    role_identifier: str = typer.Argument(..., help="Role name or ID")
+):
+    """Assign a role directly to a user (not through team membership)."""
+    client = get_api_client()
+    
+    try:
+        response = client.post(f"/users/{user_identifier}/roles/{role_identifier}", json={})
+        
+        if response.status_code == 200:
+            console.print(f"[green]Role assigned successfully![/green]")
+        elif response.status_code == 404:
+            console.print(f"[red]Error:[/red] User or role not found")
+        elif response.status_code == 409:
+            console.print(f"[red]Error:[/red] Role already assigned to this user")
+        else:
+            console.print(f"[red]Error:[/red] {response.text}")
+            
+    except httpx.ConnectError:
+        console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+
+@app.command(name="remove-role")
+def remove_role(
+    user_identifier: str = typer.Argument(..., help="Username or user ID"),
+    role_identifier: str = typer.Argument(..., help="Role name or ID")
+):
+    """Remove a directly assigned role from a user."""
+    client = get_api_client()
+    
+    if not typer.confirm(f"Remove role from user {user_identifier}?"):
+        return
+    
+    try:
+        response = client.delete(f"/users/{user_identifier}/roles/{role_identifier}")
+        
+        if response.status_code == 204:
+            console.print(f"[green]Role removed successfully.[/green]")
+        elif response.status_code == 404:
+            console.print(f"[red]Error:[/red] User, role, or assignment not found")
+        else:
+            console.print(f"[red]Error:[/red] {response.text}")
+            
+    except httpx.ConnectError:
+        console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+

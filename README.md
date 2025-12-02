@@ -1,6 +1,6 @@
 # Aegis - Agentic Ops Platform
 
-Complete platform for managing users, workspaces, and RBAC using PostgreSQL Row Level Security.
+Complete platform for managing users, teams, and RBAC using PostgreSQL Row Level Security.
 
 ## Architecture
 
@@ -27,8 +27,9 @@ Complete platform for managing users, workspaces, and RBAC using PostgreSQL Row 
 
 ### 1. **PostgreSQL Database** (`init.sql`)
 - User management with secure password hashing
-- Workspace management with ownership
-- Workspace members with roles (Owner, Admin, Member, Viewer)
+- Team management with ownership (formerly Workspaces)
+- Team members with roles (Owner, Admin, Member, Viewer)
+- **Policies** for granular permission definitions
 - **Row Level Security (RLS)** policies for automatic RBAC enforcement
 - UUID-based primary keys
 
@@ -43,7 +44,7 @@ Complete platform for managing users, workspaces, and RBAC using PostgreSQL Row 
 - **Typer** command-line interface
 - **Rich** terminal UI
 - Unified `get` command structure
-- Professional role management
+- Professional role management with policy attachment
 
 ## Quick Start
 
@@ -67,15 +68,16 @@ uv pip install -e .
 
 # Register and login
 aegis user create john --email john@example.com -p secret123
-aegis login
+aegis login --username john -p secret123
 
-# Create workspace
-aegis workspace create "Production"
+# Create team
+aegis team create "Production"
 
 # List everything
 aegis get users
-aegis get ws
+aegis get teams
 aegis get roles
+aegis get policies
 ```
 
 ## Environment Variables
@@ -110,28 +112,36 @@ Base URL: `http://localhost:8000`
 
 ### Users
 - `GET /users` - List users
-- `GET /users/{id}` - Get user
+- `GET /users/{id}` - Get user (includes teams & roles)
 - `PUT /users/{id}` - Update user
 
-### Workspaces
-- `POST /workspaces` - Create workspace
-- `GET /workspaces` - List workspaces
-- `GET /workspaces/{id}` - Get workspace
-- `PUT /workspaces/{id}` - Update workspace
-- `DELETE /workspaces/{id}` - Delete workspace
+### Teams (formerly Workspaces)
+- `POST /teams` - Create team
+- `GET /teams` - List teams
+- `GET /teams/{id}` - Get team
+- `PUT /teams/{id}` - Update team
+- `DELETE /teams/{id}` - Delete team
 
 ### Members
-- `GET /workspaces/{id}/members` - List members
-- `POST /workspaces/{id}/members` - Add member
-- `DELETE /workspaces/{id}/members/{user_id}` - Remove member
+- `GET /teams/{id}/members` - List members
+- `POST /teams/{id}/members` - Add member
+- `DELETE /teams/{id}/members/{user_id}` - Remove member
 
-## RBAC Roles
+### Policies & Roles
+- `GET /policies` - List policies
+- `POST /policies` - Create policy
+- `GET /roles` - List roles
+- `POST /roles` - Create role with attached policies
+
+## RBAC Roles & Policies
+
+Roles are collections of policies that define permissions.
 
 | Role | Permissions |
 |------|-------------|
-| **admin** | Full administrative access to workspace, members, and data |
-| **editor** | Can manage workspace settings and members |
-| **viewer** | Read-only access to workspace and members |
+| **admin** | Full administrative access to team, members, and data |
+| **editor** | Can manage team settings and members |
+| **viewer** | Read-only access to team and members |
 | **deployer** | Can deploy and manage deployments |
 
 ## Development
@@ -171,7 +181,9 @@ Aegis/
 │   │   └── routers/
 │   │       ├── auth.py
 │   │       ├── users.py
-│   │       └── workspaces.py
+│   │       ├── teams.py         # Team management
+│   │       ├── roles.py         # Role management
+│   │       └── policies.py      # Policy management
 │   ├── Dockerfile
 │   └── pyproject.toml
 └── aegis-cli/                   # CLI tool
@@ -181,7 +193,9 @@ Aegis/
     │   ├── config.py            # Config (~/.aegis/config)
     │   └── commands/
     │       ├── user.py
-    │       └── workspace.py
+    │       ├── team.py
+    │       ├── role.py
+    │       └── policy.py
     └── pyproject.toml
 ```
 
@@ -207,7 +221,7 @@ cat ~/.aegis/config
 
 **Permission denied errors:**
 - Check if you're logged in: `aegis user me`
-- Verify your role in workspace: `aegis workspace members`
+- Verify your role in team: `aegis team members`
 
 **Database connection failed:**
 ```bash

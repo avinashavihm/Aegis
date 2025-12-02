@@ -22,7 +22,7 @@ uv pip install -e .
 The CLI stores configuration in `~/.aegis/config`:
 - **API URL**: Service endpoint (default: `http://localhost:8000`)
 - **Auth Token**: JWT token from login
-- **Current Context**: Active workspace
+- **Current Context**: Active team
 
 Set custom API URL:
 ```bash
@@ -32,8 +32,6 @@ export AEGIS_API_URL=http://your-api-server:8000
 # Or via config
 python -c "from src.config import set_api_url; set_api_url('http://your-api:8000')"
 ```
-
-## Usage
 
 ## Usage
 
@@ -53,12 +51,14 @@ The `get` command is the primary way to retrieve resources. It supports singular
 # List resources
 aegis get users
 aegis get roles
-aegis get workspaces (or 'ws')
+aegis get teams (or 'ws')
+aegis get policies
 
 # Get specific resource
 aegis get user yaswanth
 aegis get role admin
-aegis get workspace my-workspace
+aegis get team my-team
+aegis get policy FullAccess
 ```
 
 ### User Management
@@ -73,31 +73,49 @@ aegis login --username <username> -p <password>
 aegis get user
 ```
 
-### Workspace Management
+### Team Management (formerly Workspaces)
 ```bash
-# Create a workspace (auto-sets as current context)
-aegis workspace create "My Workspace"
-# Note: Name is automatically slugified (e.g., "My Workspace" -> "my-workspace")
+# Create a team (auto-sets as current context)
+aegis team create "My Team"
+# Note: Name is automatically slugified (e.g., "My Team" -> "my-team")
 
-# List workspaces
-aegis get ws
+# List teams
+aegis get teams
 
-# Set current workspace context
-aegis workspace set my-workspace
+# Set current team context
+aegis team set my-team
 
-# List workspace members
-aegis workspace members
+# List team members
+aegis team members
+```
+
+### Policy Management
+Policies define permissions and are attached to roles.
+
+```bash
+# List policies
+aegis get policies
+
+# Create a policy
+aegis policy create MyPolicy --content '{"statements": [{"effect": "allow", "actions": ["*"], "resources": ["*"]}]}'
+
+# View policy details
+aegis get policy MyPolicy
 ```
 
 ### Role Management
-Roles use professional naming conventions: `admin`, `editor`, `viewer`, `deployer`.
+Roles link users to policies within a team or globally.
+Default roles: `admin`, `editor`, `viewer`, `deployer`.
 
 ```bash
 # List roles
 aegis get roles
 
-# View role details and policy
-aegis get role admin -o yaml
+# Create a custom role with attached policies
+aegis role create custom-role --policy FullAccess --policy ReadOnly
+
+# View role details and attached policies
+aegis get role admin
 ```
 
 ## Example Workflow
@@ -109,14 +127,14 @@ uvicorn src.main:app --reload
 
 # 2. Register and login
 aegis user create john --email john@example.com -p secret123
-aegis user login
+aegis login --username john -p secret123
 
-# 3. Create and use workspace
-aegis workspace create "Production" --slug prod
-aegis workspace ls
+# 3. Create and use team
+aegis team create "Production" --slug prod
+aegis team ls
 
 # 4. View members
-aegis workspace members
+aegis team members
 ```
 
 ## Configuration File

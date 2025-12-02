@@ -4,82 +4,138 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Users Table
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    username VARCHAR(50) NOT NULL UNIQUE, -- Added username
-    email VARCHAR(255) NOT NULL UNIQUE,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    full_name VARCHAR(255),
+    full_name VARCHAR(100),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Workspaces Table
-CREATE TABLE workspaces (
+-- Teams Table (formerly Workspaces)
+CREATE TABLE teams (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(255) NOT NULL,
-    slug VARCHAR(255) NOT NULL UNIQUE,
-    owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    slug VARCHAR(100) UNIQUE NOT NULL,
+    owner_id UUID REFERENCES users(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Roles Table
+-- Policies Table (NEW)
+CREATE TABLE policies (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) UNIQUE NOT NULL,
+    description TEXT,
+    content JSONB NOT NULL, -- The actual policy JSON
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Roles Table (Modified: Removed policy column)
 CREATE TABLE roles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(50) NOT NULL,
     description TEXT,
-    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE, -- NULL for global roles
-    policy JSONB NOT NULL,
+    team_id UUID REFERENCES teams(id) ON DELETE CASCADE, -- Null for global roles
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(name, workspace_id) -- Role names unique within a workspace (or global)
+    UNIQUE(name, team_id)
 );
 
--- Workspace Members Table (Many-to-Many relationship between Users and Workspaces)
-CREATE TABLE workspace_members (
-    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role_id UUID NOT NULL REFERENCES roles(id),
+-- Role-Policies Mapping (Many-to-Many)
+CREATE TABLE role_policies (
+    role_id UUID REFERENCES roles(id) ON DELETE CASCADE,
+    policy_id UUID REFERENCES policies(id) ON DELETE CASCADE,
+    PRIMARY KEY (role_id, policy_id)
+);
+
+-- Team Members Table (formerly Workspace Members)
+CREATE TABLE team_members (
+    team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    role_id UUID REFERENCES roles(id) ON DELETE SET NULL,
     joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (workspace_id, user_id)
+    PRIMARY KEY (team_id, user_id)
+);
+
+-- User Roles Table (Direct role assignment to users, not through teams)
+CREATE TABLE user_roles (
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    role_id UUID REFERENCES roles(id) ON DELETE CASCADE,
+    assigned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, role_id)
+);
+
+-- Team Roles Table (Roles assigned to the team itself, inherited by members)
+CREATE TABLE team_roles (
+    team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+    role_id UUID REFERENCES roles(id) ON DELETE CASCADE,
+    assigned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (team_id, role_id)
 );
 
 -- Indexes for performance
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_username ON users(username);
-CREATE INDEX idx_workspaces_slug ON workspaces(slug);
-CREATE INDEX idx_workspaces_owner_id ON workspaces(owner_id);
-CREATE INDEX idx_workspace_members_user_id ON workspace_members(user_id);
-CREATE INDEX idx_workspace_members_workspace_id ON workspace_members(workspace_id);
-CREATE INDEX idx_roles_workspace_id ON roles(workspace_id);
+CREATE INDEX idx_teams_slug ON teams(slug);
+CREATE INDEX idx_teams_owner_id ON teams(owner_id);
+CREATE INDEX idx_team_members_user_id ON team_members(user_id);
+CREATE INDEX idx_team_members_team_id ON team_members(team_id);
+CREATE INDEX idx_roles_team_id ON roles(team_id);
 
--- Seed Default Roles
-INSERT INTO roles (name, description, policy) VALUES
+-- Seed Default Policies
+INSERT INTO policies (name, description, content) VALUES
 (
-    'admin',
-    'Full administrative access to workspace, members, and data.',
+    'FullAccess',
+    'Full administrative access to everything',
     '{"statements": [{"sid": "FullAccess", "effect": "allow", "actions": ["*"], "resources": ["*"]}]}'
 ),
 (
-    'editor',
-    'Can manage workspace settings and members.',
-    '{"statements": [{"sid": "WorkspaceManage", "effect": "allow", "actions": ["workspace:read", "workspace:update", "member:read", "member:add", "member:remove", "member:update"], "resources": ["*"]}]}'
+    'TeamManage',
+    'Can manage team settings and members',
+    '{"statements": [{"sid": "TeamManage", "effect": "allow", "actions": ["team:read", "team:update", "member:read", "member:add", "member:remove", "member:update"], "resources": ["*"]}]}'
 ),
 (
-    'viewer',
-    'Read-only access to workspace and members.',
-    '{"statements": [{"sid": "ReadOnly", "effect": "allow", "actions": ["workspace:read", "member:read"], "resources": ["*"]}]}'
+    'ReadOnly',
+    'Read-only access',
+    '{"statements": [{"sid": "ReadOnly", "effect": "allow", "actions": ["team:read", "member:read"], "resources": ["*"]}]}'
 ),
 (
-    'deployer',
-    'Can deploy and manage deployments.',
-    '{"statements": [{"sid": "DeployAccess", "effect": "allow", "actions": ["workspace:read", "deployment:*"], "resources": ["*"]}]}'
+    'DeployAccess',
+    'Can deploy and manage deployments',
+    '{"statements": [{"sid": "DeployAccess", "effect": "allow", "actions": ["team:read", "deployment:*"], "resources": ["*"]}]}'
 );
+
+-- Seed Default Roles (Linked to Policies)
+INSERT INTO roles (name, description) VALUES
+('admin', 'Full administrative access'),
+('editor', 'Can manage team settings'),
+('viewer', 'Read-only access'),
+('deployer', 'Can deploy applications');
+
+-- Link Roles to Policies
+INSERT INTO role_policies (role_id, policy_id)
+SELECT r.id, p.id FROM roles r, policies p WHERE r.name = 'admin' AND p.name = 'FullAccess';
+
+INSERT INTO role_policies (role_id, policy_id)
+SELECT r.id, p.id FROM roles r, policies p WHERE r.name = 'editor' AND p.name = 'TeamManage';
+
+INSERT INTO role_policies (role_id, policy_id)
+SELECT r.id, p.id FROM roles r, policies p WHERE r.name = 'viewer' AND p.name = 'ReadOnly';
+
+INSERT INTO role_policies (role_id, policy_id)
+SELECT r.id, p.id FROM roles r, policies p WHERE r.name = 'deployer' AND p.name = 'DeployAccess';
 
 -- ZERO TRUST: Enable Row Level Security (RLS)
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE workspaces ENABLE ROW LEVEL SECURITY;
-ALTER TABLE workspace_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
+ALTER TABLE policies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE role_policies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE team_roles ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies (RBAC)
 
@@ -95,33 +151,33 @@ CREATE POLICY users_update_own ON users
     USING (id = current_setting('app.current_user_id', true)::uuid);
 
 -- 2. Roles Table
--- Read: Global roles are visible to all. Workspace roles visible to members.
+-- Read: Global roles are visible to all. Team roles visible to members.
 CREATE POLICY roles_read_access ON roles
     FOR SELECT
     USING (
-        workspace_id IS NULL
+        team_id IS NULL
         OR EXISTS (
-            SELECT 1 FROM workspace_members
-            WHERE workspace_id = roles.workspace_id
+            SELECT 1 FROM team_members
+            WHERE team_id = roles.team_id
             AND user_id = current_setting('app.current_user_id', true)::uuid
         )
     );
 
--- 3. Workspaces Table
+-- 3. Teams Table
 -- Read: Visible if owner OR member
-CREATE POLICY workspaces_read_access ON workspaces
+CREATE POLICY teams_read_access ON teams
     FOR SELECT
     USING (
         owner_id = current_setting('app.current_user_id', true)::uuid
         OR EXISTS (
-            SELECT 1 FROM workspace_members
-            WHERE workspace_id = workspaces.id
+            SELECT 1 FROM team_members
+            WHERE team_id = teams.id
             AND user_id = current_setting('app.current_user_id', true)::uuid
         )
     );
 
--- Insert: Any authenticated user can create a workspace (must be owner)
-CREATE POLICY workspaces_insert ON workspaces
+-- Insert: Any authenticated user can create a team (must be owner)
+CREATE POLICY teams_insert ON teams
     FOR INSERT
     WITH CHECK (
         owner_id = current_setting('app.current_user_id', true)::uuid
@@ -132,54 +188,80 @@ CREATE POLICY workspaces_insert ON workspaces
 -- we allow members to "see" the row for update, but API prevents actual change if no permission.
 -- To be safer, we restrict UPDATE to Owner only in RLS, and rely on Owner to delegate?
 -- No, that defeats the purpose of roles.
--- Let's allow Owners AND Members to *attempt* update at DB level, API filters logic.
-CREATE POLICY workspaces_update ON workspaces
-    FOR UPDATE
+-- 4. Team Members Table
+-- Read: Visible if member of the same team
+CREATE POLICY team_members_read_access ON team_members
+    FOR SELECT
     USING (
-        owner_id = current_setting('app.current_user_id', true)::uuid
+        EXISTS (
+            SELECT 1 FROM team_members tm
+            WHERE tm.team_id = team_members.team_id
+            AND tm.user_id = current_setting('app.current_user_id', true)::uuid
+        )
+    );
+
+-- Write: Team owner or members (with permissions) can manage members
+-- (Simplified: checks if user is owner or member of the team)
+CREATE POLICY team_members_write_access ON team_members
+    FOR ALL
+    USING (
+        EXISTS (
+            SELECT 1 FROM teams
+            WHERE id = team_id
+            AND owner_id = current_setting('app.current_user_id', true)::uuid
+        )
         OR EXISTS (
-            SELECT 1 FROM workspace_members
-            WHERE workspace_id = workspaces.id
+            SELECT 1 FROM team_members existing_tm
+            WHERE existing_tm.team_id = team_id
+            AND existing_tm.user_id = current_setting('app.current_user_id', true)::uuid
+        )
+    );
+
+-- 5. User Roles Table
+-- Read: Users can see their own role assignments
+CREATE POLICY user_roles_read_access ON user_roles
+    FOR SELECT
+    USING (user_id = current_setting('app.current_user_id', true)::uuid);
+
+-- Write: Only admins can assign roles (simplified: allow for now, can be restricted later)
+CREATE POLICY user_roles_write_access ON user_roles
+    FOR ALL
+    USING (true);
+
+-- 6. Team Roles Table
+-- Read: Visible to team members
+CREATE POLICY team_roles_read_access ON team_roles
+    FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM team_members
+            WHERE team_id = team_roles.team_id
             AND user_id = current_setting('app.current_user_id', true)::uuid
         )
     );
 
--- Delete: Only Owner can delete the workspace
-CREATE POLICY workspaces_delete ON workspaces
-    FOR DELETE
-    USING (
-        owner_id = current_setting('app.current_user_id', true)::uuid
-    );
-
--- 4. Workspace Members Table
--- Read: Visible if member of the workspace
-CREATE POLICY members_read_access ON workspace_members
-    FOR SELECT
-    USING (
-        user_id = current_setting('app.current_user_id', true)::uuid
-        OR EXISTS (
-            SELECT 1 FROM workspace_members wm
-            WHERE wm.workspace_id = workspace_members.workspace_id
-            AND wm.user_id = current_setting('app.current_user_id', true)::uuid
-        )
-    );
-
--- Insert/Update/Delete: Allowed for members (API enforces role permissions)
-CREATE POLICY members_write_access ON workspace_members
+-- Write: Team owners or admins
+CREATE POLICY team_roles_write_access ON team_roles
     FOR ALL
     USING (
         EXISTS (
-            SELECT 1 FROM workspaces
-            WHERE id = workspace_id
+            SELECT 1 FROM teams
+            WHERE id = team_id
             AND owner_id = current_setting('app.current_user_id', true)::uuid
-        )
-        OR EXISTS (
-            SELECT 1 FROM workspace_members existing_wm
-            WHERE existing_wm.workspace_id = workspace_id
-            AND existing_wm.user_id = current_setting('app.current_user_id', true)::uuid
         )
     );
 
+-- 7. Policies Table
+-- Read: Visible to all authenticated users
+CREATE POLICY policies_read_access ON policies
+    FOR SELECT
+    USING (true);
+
+-- 6. Role Policies Table
+-- Read: Visible to all authenticated users
+CREATE POLICY role_policies_read_access ON role_policies
+    FOR SELECT
+    USING (true);
 
 -- Trigger to update updated_at column automatically
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -195,7 +277,7 @@ CREATE TRIGGER update_users_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_workspaces_updated_at
-    BEFORE UPDATE ON workspaces
+CREATE TRIGGER update_teams_updated_at
+    BEFORE UPDATE ON teams
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();

@@ -13,18 +13,19 @@ async def create_role(
 ):
     """
     Create a new role.
-    If workspace_id is provided, creates a workspace-specific role.
-    Otherwise, creates a global role (requires admin privileges - enforced by RLS/Policy).
+    If team_id is provided, creates a team-specific role.
+    Otherwise, creates a global role.
+    Policies are linked by ID or name.
     """
     name = data.get("name")
     description = data.get("description")
-    workspace_id = data.get("workspace_id")
-    policy = data.get("policy")
+    team_id = data.get("team_id")
+    policy_ids = data.get("policy_ids", []) # List of policy IDs
     
-    if not all([name, policy]):
+    if not name:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="name and policy are required"
+            detail="name is required"
         )
     
     # Enforce slug-like naming: lowercase, alphanumeric, hyphens only
@@ -34,28 +35,18 @@ async def create_role(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Role name must contain only lowercase letters, numbers, and hyphens (no spaces)"
         )
-    
-    # Validate policy is valid JSON
-    if isinstance(policy, str):
-        try:
-            policy = json.loads(policy)
-        except json.JSONDecodeError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid JSON policy"
-            )
             
     with get_db_connection(str(current_user_id)) as conn:
         with conn.cursor() as cur:
             # Check for duplicate name in scope
-            if workspace_id:
+            if team_id:
                 cur.execute(
-                    "SELECT id FROM roles WHERE name = %s AND workspace_id = %s",
-                    (name, str(workspace_id))
+                    "SELECT id FROM roles WHERE name = %s AND team_id = %s",
+                    (name, str(team_id))
                 )
             else:
                 cur.execute(
-                    "SELECT id FROM roles WHERE name = %s AND workspace_id IS NULL",
+                    "SELECT id FROM roles WHERE name = %s AND team_id IS NULL",
                     (name,)
                 )
                 
@@ -67,58 +58,81 @@ async def create_role(
             
             # Create role
             cur.execute(
-                """INSERT INTO roles (name, description, workspace_id, policy) 
-                   VALUES (%s, %s, %s, %s) 
-                   RETURNING id, name, description, workspace_id, policy, created_at""",
-                (name, description, str(workspace_id) if workspace_id else None, json.dumps(policy))
+                """INSERT INTO roles (name, description, team_id) 
+                   VALUES (%s, %s, %s) 
+                   RETURNING id, name, description, team_id, created_at""",
+                (name, description, str(team_id) if team_id else None)
             )
             role_data = cur.fetchone()
+            role_id = role_data['id']
             
-    if not role_data:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Permission denied to create role"
-        )
-        
+            # Link policies
+            if policy_ids:
+                values = [(role_id, pid) for pid in policy_ids]
+                cur.executemany(
+                    "INSERT INTO role_policies (role_id, policy_id) VALUES (%s, %s)",
+                    values
+                )
+            
+            conn.commit()
+            
     return dict(role_data)
 
 @router.get("")
 async def list_roles(
-    workspace_id: UUID = None,
+    team_id: UUID = None,
     current_user_id: UUID = Depends(get_current_user_id)
 ):
     """
     List roles.
-    If workspace_id is provided, lists global roles + roles for that workspace.
+    If team_id is provided, lists global roles + roles for that team.
     Otherwise, lists only global roles.
     """
     with get_db_connection(str(current_user_id)) as conn:
         with conn.cursor() as cur:
-            if workspace_id:
+            if team_id:
                 cur.execute(
-                    """SELECT id, name, description, workspace_id, policy, created_at 
+                    """SELECT id, name, description, team_id, created_at 
                        FROM roles 
-                       WHERE workspace_id IS NULL OR workspace_id = %s
-                       ORDER BY workspace_id NULLS FIRST, name""",
-                    (str(workspace_id),)
+                       WHERE team_id IS NULL OR team_id = %s
+                       ORDER BY team_id NULLS FIRST, name""",
+                    (str(team_id),)
                 )
             else:
                 cur.execute(
-                    """SELECT id, name, description, workspace_id, policy, created_at 
+                    """SELECT id, name, description, team_id, created_at 
                        FROM roles 
-                       WHERE workspace_id IS NULL
+                       WHERE team_id IS NULL
                        ORDER BY name"""
                 )
             roles = cur.fetchall()
             
-    return [dict(role) for role in roles]
+            # Fetch policies for each role
+            result = []
+            for role in roles:
+                role_dict = dict(role)
+                
+                # Get attached policies
+                cur.execute(
+                    """SELECT p.id, p.name, p.description
+                       FROM policies p
+                       JOIN role_policies rp ON p.id = rp.policy_id
+                       WHERE rp.role_id = %s
+                       ORDER BY p.name""",
+                    (role_dict['id'],)
+                )
+                policies = cur.fetchall()
+                role_dict['policies'] = [dict(p) for p in policies]
+                result.append(role_dict)
+            
+    return result
 
 @router.get("/{role_identifier}")
 async def get_role(
     role_identifier: str,
     current_user_id: UUID = Depends(get_current_user_id)
 ):
-    """Get role details by ID or name."""
+    """Get role details by ID or name, including policies."""
     with get_db_connection(str(current_user_id)) as conn:
         with conn.cursor() as cur:
             # Try to parse as UUID first
@@ -126,25 +140,39 @@ async def get_role(
                 UUID(role_identifier)
                 # It's a valid UUID, search by ID
                 cur.execute(
-                    "SELECT id, name, description, workspace_id, policy, created_at FROM roles WHERE id = %s",
+                    "SELECT id, name, description, team_id, created_at FROM roles WHERE id = %s",
                     (role_identifier,)
                 )
             except ValueError:
                 # Not a UUID, search by name (global roles only for simplicity)
                 cur.execute(
-                    "SELECT id, name, description, workspace_id, policy, created_at FROM roles WHERE name = %s AND workspace_id IS NULL",
+                    "SELECT id, name, description, team_id, created_at FROM roles WHERE name = %s AND team_id IS NULL",
                     (role_identifier,)
                 )
             
             role_data = cur.fetchone()
             
-    if not role_data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Role not found"
-        )
-        
-    return dict(role_data)
+            if not role_data:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Role not found"
+                )
+            
+            # Fetch attached policies
+            cur.execute(
+                """
+                SELECT p.id, p.name, p.description, p.content
+                FROM role_policies rp
+                JOIN policies p ON rp.policy_id = p.id
+                WHERE rp.role_id = %s
+                """,
+                (role_data['id'],)
+            )
+            policies = cur.fetchall()
+            
+            result = dict(role_data)
+            result['policies'] = [dict(p) for p in policies]
+            return result
 
 @router.put("/{role_identifier}")
 async def update_role(
@@ -152,54 +180,50 @@ async def update_role(
     data: dict = Body(...),
     current_user_id: UUID = Depends(get_current_user_id)
 ):
-    """Update role policy or description by ID or name."""
+    """Update role description or policies."""
     description = data.get("description")
-    policy = data.get("policy")
-    
-    update_fields = []
-    values = []
-    
-    if description is not None:
-        update_fields.append("description = %s")
-        values.append(description)
-        
-    if policy is not None:
-        if isinstance(policy, str):
-            try:
-                policy = json.loads(policy)
-            except json.JSONDecodeError:
-                raise HTTPException(status_code=400, detail="Invalid JSON policy")
-        update_fields.append("policy = %s")
-        values.append(json.dumps(policy))
-        
-    if not update_fields:
-        raise HTTPException(status_code=400, detail="No fields to update")
+    policy_ids = data.get("policy_ids")
     
     # Determine if identifier is UUID or name
     try:
         UUID(role_identifier)
         where_clause = "id = %s"
+        identifier = role_identifier
     except ValueError:
-        where_clause = "name = %s AND workspace_id IS NULL"
+        where_clause = "name = %s AND team_id IS NULL"
+        identifier = role_identifier
         
-    values.append(role_identifier)
-    
     with get_db_connection(str(current_user_id)) as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                f"""UPDATE roles SET {', '.join(update_fields)} 
-                   WHERE {where_clause}
-                   RETURNING id, name, description, workspace_id, policy, created_at""",
-                values
-            )
+            # Get Role ID first
+            cur.execute(f"SELECT id FROM roles WHERE {where_clause}", (identifier,))
+            role = cur.fetchone()
+            if not role:
+                raise HTTPException(status_code=404, detail="Role not found")
+            role_id = role['id']
+
+            if description is not None:
+                cur.execute(
+                    "UPDATE roles SET description = %s WHERE id = %s",
+                    (description, role_id)
+                )
+            
+            if policy_ids is not None:
+                # Replace all policies
+                cur.execute("DELETE FROM role_policies WHERE role_id = %s", (role_id,))
+                if policy_ids:
+                    values = [(role_id, pid) for pid in policy_ids]
+                    cur.executemany(
+                        "INSERT INTO role_policies (role_id, policy_id) VALUES (%s, %s)",
+                        values
+                    )
+            
+            conn.commit()
+            
+            # Fetch updated role
+            cur.execute("SELECT id, name, description, team_id, created_at FROM roles WHERE id = %s", (role_id,))
             updated_role = cur.fetchone()
             
-    if not updated_role:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Role not found or permission denied"
-        )
-        
     return dict(updated_role)
 
 @router.delete("/{role_identifier}", status_code=status.HTTP_204_NO_CONTENT)
@@ -214,42 +238,25 @@ async def delete_role(
             try:
                 UUID(role_identifier)
                 where_clause = "id = %s"
-                check_clause = "role_id = %s"
+                identifier = role_identifier
             except ValueError:
-                # Name-based lookup - need to get ID first for the check
-                cur.execute(
-                    "SELECT id FROM roles WHERE name = %s AND workspace_id IS NULL",
-                    (role_identifier,)
-                )
-                role_data = cur.fetchone()
-                if not role_data:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail="Role not found"
-                    )
-                role_id = str(role_data["id"])
-                where_clause = "name = %s AND workspace_id IS NULL"
-                check_clause = "role_id = %s"
+                where_clause = "name = %s AND team_id IS NULL"
+                identifier = role_identifier
                 
-                # Check if role is in use
-                cur.execute(f"SELECT 1 FROM workspace_members WHERE {check_clause} LIMIT 1", (role_id,))
-                if cur.fetchone():
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Cannot delete role that is assigned to members"
-                    )
-            else:
-                # UUID-based, check directly
-                cur.execute(f"SELECT 1 FROM workspace_members WHERE role_id = %s LIMIT 1", (role_identifier,))
-                if cur.fetchone():
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Cannot delete role that is assigned to members"
-                    )
-                
-            cur.execute(f"DELETE FROM roles WHERE {where_clause}", (role_identifier,))
-            if cur.rowcount == 0:
+            # Check if role is in use
+            # Need to get ID first if name was used
+            cur.execute(f"SELECT id FROM roles WHERE {where_clause}", (identifier,))
+            role = cur.fetchone()
+            if not role:
+                raise HTTPException(status_code=404, detail="Role not found")
+            role_id = role['id']
+            
+            cur.execute("SELECT 1 FROM team_members WHERE role_id = %s LIMIT 1", (role_id,))
+            if cur.fetchone():
                 raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Role not found or permission denied"
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot delete role that is assigned to members"
                 )
+                
+            cur.execute("DELETE FROM roles WHERE id = %s", (role_id,))
+            conn.commit()

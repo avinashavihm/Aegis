@@ -56,7 +56,7 @@ def print_output(data: Any, columns: List[str] = None, title: str = None):
     if current_output_format == OutputFormat.TABLE:
         table = Table(title=title)
         for col in columns:
-            table.add_column(col.replace("_", " ").title(), style="cyan")
+            table.add_column(col.title(), style="cyan")
         
         for item in data:
             row = [str(item.get(col, "")) for col in columns]
@@ -69,7 +69,7 @@ def print_output(data: Any, columns: List[str] = None, title: str = None):
         # No title for text output as requested
         table = Table(box=None, show_header=True, padding=(0, 2), title=None)
         for col in columns:
-            table.add_column(col.replace("_", " ").title(), header_style="bold")
+            table.add_column(col.title(), header_style="bold")
         
         for item in data:
             row = [str(item.get(col, "")) for col in columns]
