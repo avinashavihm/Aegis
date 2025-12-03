@@ -112,17 +112,24 @@ async def list_teams(current_user_id: UUID = Depends(get_current_user_id)):
 
 @router.post("/{team_id}/roles/{role_identifier}")
 async def assign_role_to_team(
-    team_id: UUID,
+    team_id: str,
     role_identifier: str,
     current_user_id: UUID = Depends(get_current_user_id)
 ):
     """Assign a role directly to a team (inherited by all members)."""
     with get_db_connection(str(current_user_id)) as conn:
         with conn.cursor() as cur:
-            # Check if team exists
-            cur.execute("SELECT id FROM teams WHERE id = %s", (str(team_id),))
-            if not cur.fetchone():
+            # Resolve team ID
+            try:
+                UUID(team_id)
+                cur.execute("SELECT id FROM teams WHERE id = %s", (team_id,))
+            except ValueError:
+                cur.execute("SELECT id FROM teams WHERE name = %s", (team_id,))
+            
+            team = cur.fetchone()
+            if not team:
                 raise HTTPException(status_code=404, detail="Team not found")
+            resolved_team_id = team["id"]
 
             # Resolve role ID
             try:
@@ -138,7 +145,7 @@ async def assign_role_to_team(
             # Check if already assigned
             cur.execute(
                 "SELECT 1 FROM team_roles WHERE team_id = %s AND role_id = %s",
-                (str(team_id), role_id)
+                (str(resolved_team_id), role_id)
             )
             if cur.fetchone():
                 raise HTTPException(status_code=409, detail="Role already assigned to this team")
@@ -147,7 +154,7 @@ async def assign_role_to_team(
             try:
                 cur.execute(
                     "INSERT INTO team_roles (team_id, role_id) VALUES (%s, %s)",
-                    (str(team_id), role_id)
+                    (str(resolved_team_id), role_id)
                 )
                 conn.commit()
                 return {"message": "Role assigned to team successfully"}
@@ -158,17 +165,24 @@ async def assign_role_to_team(
 
 @router.delete("/{team_id}/roles/{role_identifier}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_role_from_team(
-    team_id: UUID,
+    team_id: str,
     role_identifier: str,
     current_user_id: UUID = Depends(get_current_user_id)
 ):
     """Remove a role from a team."""
     with get_db_connection(str(current_user_id)) as conn:
         with conn.cursor() as cur:
-            # Check if team exists
-            cur.execute("SELECT id FROM teams WHERE id = %s", (str(team_id),))
-            if not cur.fetchone():
+            # Resolve team ID
+            try:
+                UUID(team_id)
+                cur.execute("SELECT id FROM teams WHERE id = %s", (team_id,))
+            except ValueError:
+                cur.execute("SELECT id FROM teams WHERE name = %s", (team_id,))
+            
+            team = cur.fetchone()
+            if not team:
                 raise HTTPException(status_code=404, detail="Team not found")
+            resolved_team_id = team["id"]
 
             # Resolve role ID
             try:
@@ -185,7 +199,7 @@ async def remove_role_from_team(
             try:
                 cur.execute(
                     "DELETE FROM team_roles WHERE team_id = %s AND role_id = %s RETURNING team_id",
-                    (str(team_id), role_id)
+                    (str(resolved_team_id), role_id)
                 )
                 deleted = cur.fetchone()
                 conn.commit()

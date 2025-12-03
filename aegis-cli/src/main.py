@@ -150,6 +150,90 @@ def attach_role_policy(
         console.print(f"[red]Error:[/red] {e}")
 
 @app.command()
+def detach_role_policy(
+    role: str = typer.Option(..., "--role", "-r", help="Role name or ID"),
+    policy: str = typer.Option(..., "--policy", "-p", help="Policy name or ID")
+):
+    """Detach a policy from a role."""
+    from rich.console import Console
+    from src.api_client import get_api_client
+    import httpx
+    
+    console = Console()
+    client = get_api_client()
+    
+    try:
+        response = client.delete(f"/roles/{role}/policies/{policy}")
+        
+        if response.status_code == 204:
+            console.print(f"[green]Policy '{policy}' detached from role '{role}'.[/green]")
+        elif response.status_code == 404:
+            console.print(f"[red]Error:[/red] Role, policy, or attachment not found")
+        else:
+            console.print(f"[red]Error:[/red] {response.text}")
+            
+    except httpx.ConnectError:
+        console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+@app.command()
+def detach_user_role(
+    user: str = typer.Option(..., "--user", "-u", help="Username or user ID"),
+    role: str = typer.Option(..., "--role", "-r", help="Role name or ID")
+):
+    """Detach a role from a user."""
+    from rich.console import Console
+    from src.api_client import get_api_client
+    import httpx
+    
+    console = Console()
+    client = get_api_client()
+    
+    try:
+        response = client.delete(f"/users/{user}/roles/{role}")
+        
+        if response.status_code == 204:
+            console.print(f"[green]Role '{role}' detached from user '{user}'.[/green]")
+        elif response.status_code == 404:
+            console.print(f"[red]Error:[/red] User, role, or assignment not found")
+        else:
+            console.print(f"[red]Error:[/red] {response.text}")
+            
+    except httpx.ConnectError:
+        console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+@app.command()
+def detach_team_role(
+    team: str = typer.Option(..., "--team", "-t", help="Team name or ID"),
+    role: str = typer.Option(..., "--role", "-r", help="Role name or ID")
+):
+    """Detach a role from a team."""
+    from rich.console import Console
+    from src.api_client import get_api_client
+    import httpx
+    
+    console = Console()
+    client = get_api_client()
+    
+    try:
+        response = client.delete(f"/teams/{team}/roles/{role}")
+        
+        if response.status_code == 204:
+            console.print(f"[green]Role '{role}' detached from team '{team}'.[/green]")
+        elif response.status_code == 404:
+            console.print(f"[red]Error:[/red] Team, role, or assignment not found")
+        else:
+            console.print(f"[red]Error:[/red] {response.text}")
+            
+    except httpx.ConnectError:
+        console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+@app.command()
 def edit(
     resource_type: str = typer.Argument(..., help="Resource type (role/roles, policy/policies, team/teams, user/users)"),
     identifier: Optional[str] = typer.Argument(None, help="Resource identifier (name or ID) - omit to edit all")

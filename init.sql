@@ -548,20 +548,22 @@ CREATE POLICY user_roles_read_access ON user_roles
         OR evaluate_policy_permission('user_role:get', 'user_role', NULL)
     );
 
--- Insert: Only admins can assign roles (simplified: allow for now, can be restricted later)
+-- Insert: Admins or users with user:modify permission can assign roles
 CREATE POLICY user_roles_insert ON user_roles
     FOR INSERT
     WITH CHECK (
         current_user_is_admin()
         OR evaluate_policy_permission('user_role:create', 'user_role', NULL)
+        OR evaluate_policy_permission('user:modify', 'user', NULL)
     );
 
--- Delete: Only admins can remove role assignments
+-- Delete: Admins or users with user:modify permission can remove role assignments
 CREATE POLICY user_roles_delete ON user_roles
     FOR DELETE
     USING (
         current_user_is_admin()
         OR evaluate_policy_permission('user_role:delete', 'user_role', NULL)
+        OR evaluate_policy_permission('user:modify', 'user', NULL)
     );
 
 -- 6. Team Roles Table
@@ -575,7 +577,7 @@ CREATE POLICY team_roles_read_access ON team_roles
         OR evaluate_policy_permission('team_role:get', 'team_role', NULL)
     );
 
--- Insert: Team owners or admins
+-- Insert: Team owners, admins, or users with team:modify permission
 CREATE POLICY team_roles_insert ON team_roles
     FOR INSERT
     WITH CHECK (
@@ -586,9 +588,10 @@ CREATE POLICY team_roles_insert ON team_roles
             AND owner_id = current_setting('app.current_user_id', true)::uuid
         )
         OR evaluate_policy_permission('team_role:create', 'team_role', NULL)
+        OR evaluate_policy_permission('team:modify', 'team', NULL)
     );
 
--- Delete: Team owners or admins
+-- Delete: Team owners, admins, or users with team:modify permission
 CREATE POLICY team_roles_delete ON team_roles
     FOR DELETE
     USING (
@@ -599,6 +602,7 @@ CREATE POLICY team_roles_delete ON team_roles
             AND owner_id = current_setting('app.current_user_id', true)::uuid
         )
         OR evaluate_policy_permission('team_role:delete', 'team_role', NULL)
+        OR evaluate_policy_permission('team:modify', 'team', NULL)
     );
 
 -- 7. Policies Table
@@ -647,18 +651,20 @@ CREATE POLICY role_policies_read_access ON role_policies
         OR current_user_has_any_role()
     );
 
--- Insert: Only admins can attach policies to roles
+-- Insert: Admins or users with role:modify permission can attach policies to roles
 CREATE POLICY role_policies_insert ON role_policies
     FOR INSERT
     WITH CHECK (
         current_user_is_admin()
+        OR evaluate_policy_permission('role:modify', 'role', NULL)
     );
 
--- Delete: Only admins can detach policies from roles
+-- Delete: Admins or users with role:modify permission can detach policies from roles
 CREATE POLICY role_policies_delete ON role_policies
     FOR DELETE
     USING (
         current_user_is_admin()
+        OR evaluate_policy_permission('role:modify', 'role', NULL)
     );
 
 -- 8. Workspaces Table
