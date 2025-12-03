@@ -187,9 +187,9 @@ ALTER TABLE users DISABLE ROW LEVEL SECURITY;
 ALTER TABLE user_roles DISABLE ROW LEVEL SECURITY;
 
 -- Create root user if it doesn't exist
--- Password: password123 (bcrypt hash)
+-- Password: admin (bcrypt hash)
 INSERT INTO users (username, email, password_hash, full_name) 
-SELECT 'root', 'root@aegis.local', '$2b$12$DGxryPStO1hTcvkDqv9rWebJ1U0rRffvNbR7dG7RxioEHlkLni1py', 'Root Administrator'
+SELECT 'root', 'root@aegis.local', '$2b$12$SGyhdYqrQCjlcdfSnvTPS.fWNBCE.6cojJ3/ExZ/MG99BwtG5.Q82', 'Root Administrator'
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'root');
 
 -- Assign administrator role to root user (if not already assigned)

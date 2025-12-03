@@ -148,4 +148,44 @@ def show_workspace(
         console.print(f"[red]Error:[/red] {e}")
 
 
+@app.command()
+def delete(
+    workspace_identifier: str,
+    yes: bool = typer.Option(False, "-y", "--yes", help="Skip confirmation prompt")
+):
+    """Delete a workspace."""
+    client = get_api_client()
+    
+    if not yes and not typer.confirm(f"Are you sure you want to delete workspace {workspace_identifier}?"):
+        return
+    
+    try:
+        response = client.delete(f"/workspaces/{workspace_identifier}")
+        
+        if response.status_code == 200:
+            try:
+                result = response.json()
+                message = result.get('message', 'Workspace deleted successfully')
+                console.print(f"[green]{message}[/green]")
+            except:
+                console.print(f"[green]Workspace '{workspace_identifier}' deleted successfully.[/green]")
+        elif response.status_code == 404:
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error:[/red] Workspace '{workspace_identifier}' not found")
+        else:
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error deleting workspace:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error deleting workspace:[/red] {response.text}")
+            
+    except httpx.ConnectError:
+        console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+
 

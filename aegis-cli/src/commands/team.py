@@ -150,7 +150,8 @@ def assign_role(
 @app.command(name="remove-role")
 def remove_role(
     role: str = typer.Argument(..., help="Role name or ID to remove"),
-    team_name: str = typer.Option(..., "--team", "-t", help="Team name")
+    team_name: str = typer.Option(..., "--team", "-t", help="Team name"),
+    yes: bool = typer.Option(False, "-y", "--yes", help="Skip confirmation prompt")
 ):
     """Remove a role from a team."""
     client = get_api_client()
@@ -169,7 +170,7 @@ def remove_role(
             console.print(f"[red]Error:[/red] Team '{team_name}' not found")
             return
             
-        if not typer.confirm(f"Remove role '{role}' from team '{team['name']}'?"):
+        if not yes and not typer.confirm(f"Remove role '{role}' from team '{team['name']}'?"):
             return
 
         # Remove role
@@ -286,7 +287,8 @@ def add_member(
 @app.command(name="remove-member")
 def remove_member(
     username: str = typer.Argument(..., help="Username to remove"),
-    team_name: str = typer.Option(..., "--team", "-t", help="Team name")
+    team_name: str = typer.Option(..., "--team", "-t", help="Team name"),
+    yes: bool = typer.Option(False, "-y", "--yes", help="Skip confirmation prompt")
 ):
     """Remove a user from a team."""
     client = get_api_client()
@@ -322,7 +324,7 @@ def remove_member(
             console.print(f"[red]Error:[/red] User '{username}' is not a member of team '{team['name']}'")
             return
             
-        if not typer.confirm(f"Remove user '{username}' from team '{team['name']}'?"):
+        if not yes and not typer.confirm(f"Remove user '{username}' from team '{team['name']}'?"):
             return
 
         # Remove member
@@ -332,6 +334,59 @@ def remove_member(
             console.print(f"[green]User '{username}' removed from team '{team['name']}'.[/green]")
         else:
             console.print(f"[red]Error:[/red] {response.text}")
+            
+    except httpx.ConnectError:
+        console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+
+@app.command()
+def delete(
+    team_name: str,
+    yes: bool = typer.Option(False, "-y", "--yes", help="Skip confirmation prompt")
+):
+    """Delete a team."""
+    client = get_api_client()
+    
+    if not yes and not typer.confirm(f"Are you sure you want to delete team {team_name}?"):
+        return
+    
+    try:
+        # First get team ID from name
+        response = client.get("/teams")
+        if response.status_code != 200:
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error:[/red] Could not load teams")
+            return
+        
+        teams = response.json()
+        team = next((t for t in teams if t["name"] == team_name), None)
+        
+        if not team:
+            console.print(f"[red]Error:[/red] Team '{team_name}' not found")
+            return
+        
+        # Delete team
+        response = client.delete(f"/teams/{team['id']}")
+        
+        if response.status_code == 204:
+            console.print(f"[green]Team '{team_name}' deleted successfully.[/green]")
+        elif response.status_code == 404:
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error:[/red] Team '{team_name}' not found")
+        else:
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error deleting team:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error deleting team:[/red] {response.text}")
             
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")

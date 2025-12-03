@@ -334,12 +334,13 @@ def assign_role(
 @app.command(name="remove-role")
 def remove_role(
     user_identifier: str = typer.Argument(..., help="Username or user ID"),
-    role_identifier: str = typer.Argument(..., help="Role name or ID")
+    role_identifier: str = typer.Argument(..., help="Role name or ID"),
+    yes: bool = typer.Option(False, "-y", "--yes", help="Skip confirmation prompt")
 ):
     """Remove a directly assigned role from a user."""
     client = get_api_client()
     
-    if not typer.confirm(f"Remove role from user {user_identifier}?"):
+    if not yes and not typer.confirm(f"Remove role from user {user_identifier}?"):
         return
     
     try:
@@ -401,6 +402,41 @@ def change_password(
             console.print(f"[red]Error:[/red] Access denied. You can only change your own password unless you're an admin.")
         else:
             console.print(f"[red]Error:[/red] {response.text}")
+            
+    except httpx.ConnectError:
+        console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+
+@app.command()
+def delete(
+    user_identifier: str,
+    yes: bool = typer.Option(False, "-y", "--yes", help="Skip confirmation prompt")
+):
+    """Delete a user."""
+    client = get_api_client()
+    
+    if not yes and not typer.confirm(f"Are you sure you want to delete user {user_identifier}?"):
+        return
+    
+    try:
+        response = client.delete(f"/users/{user_identifier}")
+        
+        if response.status_code == 204:
+            console.print(f"[green]User '{user_identifier}' deleted successfully.[/green]")
+        elif response.status_code == 404:
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error:[/red] User '{user_identifier}' not found")
+        else:
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error deleting user:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error deleting user:[/red] {response.text}")
             
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")

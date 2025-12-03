@@ -23,7 +23,11 @@ def list_roles(
         response = client.get("/roles")
         
         if response.status_code != 200:
-            console.print(f"[red]Error:[/red] {response.text}")
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error:[/red] {response.text}")
             return
         
         roles = response.json()
@@ -111,7 +115,11 @@ def create(
             role = response.json()
             console.print(f"[green]Role created successfully![/green]")
         else:
-            console.print(f"[red]Error creating role:[/red] {response.text}")
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error creating role:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error creating role:[/red] {response.text}")
             
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
@@ -134,7 +142,11 @@ def show_role(
         response = client.get(f"/roles/{role_identifier}")
         
         if response.status_code != 200:
-            console.print(f"[red]Error:[/red] {response.text}")
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error:[/red] {response.text}")
             return
         
         role = response.json()
@@ -232,7 +244,11 @@ def update(
         elif response.status_code == 404:
             console.print(f"[red]Error:[/red] Role '{role_identifier}' not found")
         else:
-            console.print(f"[red]Error updating role:[/red] {response.text}")
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error updating role:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error updating role:[/red] {response.text}")
             
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
@@ -241,11 +257,14 @@ def update(
 
 
 @app.command()
-def delete(role_identifier: str):
+def delete(
+    role_identifier: str,
+    yes: bool = typer.Option(False, "-y", "--yes", help="Skip confirmation prompt")
+):
     """Delete a role."""
     client = get_api_client()
     
-    if not typer.confirm(f"Are you sure you want to delete role {role_identifier}?"):
+    if not yes and not typer.confirm(f"Are you sure you want to delete role {role_identifier}?"):
         return
 
     try:
@@ -254,7 +273,11 @@ def delete(role_identifier: str):
         if response.status_code == 204:
             console.print("[green]Role deleted successfully.[/green]")
         else:
-            console.print(f"[red]Error deleting role:[/red] {response.text}")
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error deleting role:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error deleting role:[/red] {response.text}")
             
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
@@ -276,7 +299,11 @@ def attach_policy(role_identifier: str, policy_identifier: str):
         elif response.status_code == 409:
             console.print(f"[red]Error:[/red] Policy already attached to this role")
         else:
-            console.print(f"[red]Error:[/red] {response.text}")
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error:[/red] {response.text}")
             
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")

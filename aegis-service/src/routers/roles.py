@@ -35,37 +35,53 @@ async def create_role(
             
     with get_db_connection(str(current_user_id)) as conn:
         with conn.cursor() as cur:
-            # Check for duplicate name
-            cur.execute(
-            "SELECT id FROM roles WHERE name = %s",
-                (name,)
-            )
+            try:
+                # Check for duplicate name
+                cur.execute(
+                "SELECT id FROM roles WHERE name = %s",
+                    (name,)
+                )
+                    
+                if cur.fetchone():
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Role with this name already exists"
+                    )
                 
-            if cur.fetchone():
+                # Create role
+                cur.execute(
+                    """INSERT INTO roles (name, description) 
+                       VALUES (%s, %s) 
+                       RETURNING id, name, description, created_at""",
+                    (name, description)
+                )
+                role_data = cur.fetchone()
+                role_id = role_data['id']
+                
+                # Link policies
+                if policy_ids:
+                    values = [(role_id, pid) for pid in policy_ids]
+                    cur.executemany(
+                        "INSERT INTO role_policies (role_id, policy_id) VALUES (%s, %s)",
+                        values
+                    )
+                
+                conn.commit()
+            except HTTPException:
+                conn.rollback()
+                raise
+            except Exception as e:
+                conn.rollback()
+                error_msg = str(e)
+                if "row-level security" in error_msg.lower():
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=error_msg
+                    )
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Role with this name already exists"
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=error_msg
                 )
-            
-            # Create role
-            cur.execute(
-                """INSERT INTO roles (name, description) 
-                   VALUES (%s, %s) 
-                   RETURNING id, name, description, created_at""",
-                (name, description)
-            )
-            role_data = cur.fetchone()
-            role_id = role_data['id']
-            
-            # Link policies
-            if policy_ids:
-                values = [(role_id, pid) for pid in policy_ids]
-                cur.executemany(
-                    "INSERT INTO role_policies (role_id, policy_id) VALUES (%s, %s)",
-                    values
-                )
-            
-            conn.commit()
             
     return dict(role_data)
 

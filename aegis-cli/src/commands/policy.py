@@ -123,15 +123,30 @@ def create(
             policy = response.json()
             console.print(f"[green]Policy created successfully![/green]")
         elif response.status_code == 400:
-            console.print(f"[red]Error:[/red] {response.json()['detail']}")
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error:[/red] {response.text}")
         elif response.status_code == 401:
             console.print("[red]Error:[/red] Not authenticated. Please login first.")
+        elif response.status_code == 500:
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error:[/red] {response.text}")
         else:
-            console.print(f"[red]Error:[/red] {response.text}")
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error:[/red] {response.text}")
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
     except Exception as e:
-        console.print(f"[red]Error creating policy:[/red] {e}")
+        error_msg = str(e)
+        console.print(f"[red]Error creating policy:[/red] {error_msg}")
 
 def list_policies(
     output: Optional[OutputFormat] = typer.Option(None, "--output", "-o", help="Output format")
@@ -149,7 +164,11 @@ def list_policies(
             return
         
         if response.status_code != 200:
-            console.print(f"[red]Error:[/red] {response.text}")
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error:[/red] {response.text}")
             return
         
         policies = response.json()
@@ -188,7 +207,11 @@ def show_policy(policy_identifier: str, output: Optional[OutputFormat] = None):
         response = client.get(f"/policies/{policy_identifier}")
         
         if response.status_code != 200:
-            console.print(f"[red]Error:[/red] {response.text}")
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error:[/red] {response.text}")
             return
         
         policy = response.json()
@@ -267,7 +290,11 @@ def update(
         elif response.status_code == 404:
             console.print(f"[red]Error:[/red] Policy '{policy_identifier}' not found")
         else:
-            console.print(f"[red]Error updating policy:[/red] {response.text}")
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error updating policy:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error updating policy:[/red] {response.text}")
             
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
@@ -275,11 +302,14 @@ def update(
         console.print(f"[red]Error:[/red] {e}")
 
 @app.command()
-def delete(policy_identifier: str):
+def delete(
+    policy_identifier: str,
+    yes: bool = typer.Option(False, "-y", "--yes", help="Skip confirmation prompt")
+):
     """Delete a policy."""
     client = get_api_client()
     
-    if not typer.confirm(f"Are you sure you want to delete policy {policy_identifier}?"):
+    if not yes and not typer.confirm(f"Are you sure you want to delete policy {policy_identifier}?"):
         return
 
     try:
@@ -290,7 +320,11 @@ def delete(policy_identifier: str):
         elif response.status_code == 404:
             console.print(f"[red]Error:[/red] Policy '{policy_identifier}' not found")
         else:
-            console.print(f"[red]Error deleting policy:[/red] {response.text}")
+            try:
+                error_detail = response.json().get('detail', response.text)
+                console.print(f"[red]Error deleting policy:[/red] {error_detail}")
+            except:
+                console.print(f"[red]Error deleting policy:[/red] {response.text}")
             
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")

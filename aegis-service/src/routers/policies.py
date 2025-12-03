@@ -50,16 +50,25 @@ async def create_policy(
                 new_policy = cur.fetchone()
                 conn.commit()
                 return dict(new_policy)
+            except HTTPException:
+                conn.rollback()
+                raise
             except Exception as e:
                 conn.rollback()
-                if "unique constraint" in str(e):
+                error_msg = str(e)
+                if "unique constraint" in error_msg.lower():
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
                         detail="Policy name already exists"
                     )
+                if "row-level security" in error_msg.lower():
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=error_msg
+                    )
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=str(e)
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=error_msg
                 )
 
 @router.get("")
