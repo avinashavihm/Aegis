@@ -139,10 +139,10 @@ async def update_user(
             
             # Check if user is updating their own profile or is admin
             if str(target_user_id) != str(current_user_id) and not is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only update your own profile"
-        )
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You can only update your own profile"
+                )
     
     update_fields = []
     values = []
@@ -162,22 +162,22 @@ async def update_user(
         update_fields.append("password_hash = %s")
         values.append(hash_password(password))
     
-    if not update_fields:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No fields to update"
-        )
-    
-            values.append(str(target_user_id))
-    
-            cur.execute(
-                f"""UPDATE users SET {', '.join(update_fields)} 
-                   WHERE id = %s 
-                   RETURNING id, username, email, full_name, created_at""",
-                values
+        if not update_fields:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No fields to update"
             )
-            updated_user = cur.fetchone()
     
+        values.append(str(target_user_id))
+    
+        cur.execute(
+            f"""UPDATE users SET {', '.join(update_fields)} 
+               WHERE id = %s 
+               RETURNING id, username, email, full_name, created_at""",
+            values
+        )
+        updated_user = cur.fetchone()
+            
     return dict(updated_user)
 
 

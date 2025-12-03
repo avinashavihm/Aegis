@@ -19,7 +19,7 @@ def list_roles(
         set_output_format(output)
     client = get_api_client()
     
-        try:
+    try:
         response = client.get("/roles")
         
         if response.status_code != 200:

@@ -106,11 +106,11 @@ def create(
                 return
         else:
             # Validate JSON from content string
-        try:
-            json_content = json.loads(content)
-        except json.JSONDecodeError:
-            console.print("[red]Error:[/red] Invalid JSON content")
-            return
+            try:
+                json_content = json.loads(content)
+            except json.JSONDecodeError:
+                console.print("[red]Error:[/red] Invalid JSON content")
+                return
 
         # Create single policy
         response = client.post("/policies", json={
@@ -168,11 +168,11 @@ def list_policies(
                 clean_policies.append(clean_p)
             print_output(clean_policies, title="Policies")
         else:
-        print_output(
-            policies,
+            print_output(
+                policies,
                 columns=["name", "description"],
-            title="Policies"
-        )
+                title="Policies"
+            )
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")
     except Exception as e:

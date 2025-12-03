@@ -12,7 +12,8 @@ console = Console()
 
 @app.command()
 def create(
-    name: str
+    name: str,
+    description: Optional[str] = typer.Option(None, "--desc", "-d", help="Team description")
 ):
     """Create a new team."""
     client = get_api_client()
@@ -23,10 +24,12 @@ def create(
         console.print("[red]Error:[/red] Name must contain only lowercase letters, numbers, and hyphens (no spaces).")
         return
 
+    payload = {"name": name}
+    if description:
+        payload["description"] = description
+
     try:
-        response = client.post("/teams", json={
-            "name": name
-        })
+        response = client.post("/teams", json=payload)
         
         if response.status_code == 201:
             team = response.json()

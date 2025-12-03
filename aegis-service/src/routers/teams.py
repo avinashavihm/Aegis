@@ -36,9 +36,9 @@ async def create_team(
                 )
                 new_team = cur.fetchone()
                 
-                # Add owner as a member with 'admin' role automatically
-                # First get the admin role ID
-                cur.execute("SELECT id FROM roles WHERE name = 'admin'")
+                # Add owner as a member with 'administrator' role automatically
+                # First get the administrator role ID
+                cur.execute("SELECT id FROM roles WHERE name = 'administrator'")
                 admin_role = cur.fetchone()
                 
                 if admin_role:

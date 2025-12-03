@@ -182,15 +182,26 @@ INSERT INTO role_policies (role_id, policy_id)
 SELECT r.id, p.id FROM roles r, policies p WHERE r.name = 'role-viewer' AND p.name = 'RoleAndPolicyViewer';
 
 -- Create root user with admin role (bypassing RLS temporarily)
+-- This ensures root user exists on first-time setup with administrator role attached
 ALTER TABLE users DISABLE ROW LEVEL SECURITY;
 ALTER TABLE user_roles DISABLE ROW LEVEL SECURITY;
 
-INSERT INTO users (username, email, password_hash, full_name) VALUES
-('root', 'root@aegis.local', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5ysY3H1.5C0LW', 'Root Administrator');
+-- Create root user if it doesn't exist
+-- Password: password123 (bcrypt hash)
+INSERT INTO users (username, email, password_hash, full_name) 
+SELECT 'root', 'root@aegis.local', '$2b$12$DGxryPStO1hTcvkDqv9rWebJ1U0rRffvNbR7dG7RxioEHlkLni1py', 'Root Administrator'
+WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'root');
 
--- Assign administrator role to root user
+-- Assign administrator role to root user (if not already assigned)
 INSERT INTO user_roles (user_id, role_id)
-SELECT u.id, r.id FROM users u, roles r WHERE u.username = 'root' AND r.name = 'administrator';
+SELECT u.id, r.id 
+FROM users u, roles r 
+WHERE u.username = 'root' 
+  AND r.name = 'administrator'
+  AND NOT EXISTS (
+    SELECT 1 FROM user_roles ur 
+    WHERE ur.user_id = u.id AND ur.role_id = r.id
+  );
 
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
@@ -262,8 +273,20 @@ DECLARE
     has_allow BOOLEAN := FALSE;
     res_text TEXT;
     act_text TEXT;
+    user_id_str TEXT;
 BEGIN
-    user_uuid := current_setting('app.current_user_id', true)::uuid;
+    -- Safely get user_id, handling NULL and empty string
+    user_id_str := current_setting('app.current_user_id', true);
+    
+    IF user_id_str IS NULL OR user_id_str = '' THEN
+        RETURN FALSE;
+    END IF;
+    
+    BEGIN
+        user_uuid := user_id_str::uuid;
+    EXCEPTION WHEN OTHERS THEN
+        RETURN FALSE;
+    END;
     
     IF user_uuid IS NULL THEN
         RETURN FALSE;
@@ -616,19 +639,12 @@ CREATE POLICY policies_delete ON policies
     );
 
 -- 6. Role Policies Table
--- Read: Admins see all, users see role policies for their direct roles
+-- Read: Admins see all, users with roles can see role policies
 CREATE POLICY role_policies_read_access ON role_policies
     FOR SELECT
     USING (
         current_user_is_admin()
-        OR (
-            current_user_has_any_role()
-            AND EXISTS (
-                SELECT 1 FROM user_roles ur
-                WHERE ur.role_id = role_policies.role_id
-                AND ur.user_id = current_setting('app.current_user_id', true)::uuid
-            )
-        )
+        OR current_user_has_any_role()
     );
 
 -- 8. Workspaces Table
