@@ -1,8 +1,6 @@
 import typer
 from typing import Optional, List
 from rich.console import Console
-from rich.syntax import Syntax
-import json
 from src.api_client import get_api_client
 from src.utils import print_output, OutputFormat, set_output_format
 import httpx

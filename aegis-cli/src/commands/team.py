@@ -1,7 +1,6 @@
 import typer
 from typing import Optional
 from rich.console import Console
-from rich.table import Table
 from src.api_client import get_api_client
 from src.utils import OutputFormat, set_output_format
 import httpx
