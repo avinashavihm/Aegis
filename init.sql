@@ -113,37 +113,37 @@ CREATE INDEX idx_workspaces_owner_id ON workspaces(owner_id);
 INSERT INTO policies (name, description, content) VALUES
 (
     'AdministratorAccess',
-    'Full administrative access to all resources including definitions and configurations',
+    'Full administrative access to all resources',
     '{"Version": "2012-10-17", "Statement": [{"Sid": "AdministratorAccess", "Effect": "Allow", "Action": ["*"], "Resource": ["*"]}]}'
 ),
 (
     'TeamManagement',
-    'Full access to manage teams and team members, including reading team definitions and configurations',
+    'Full access to manage teams and team members',
     '{"Version": "2012-10-17", "Statement": [{"Sid": "TeamManagement", "Effect": "Allow", "Action": ["team:create", "team:modify", "team:get", "team:list", "team:read", "team:delete", "member:create", "member:modify", "member:get", "member:list", "member:read", "member:delete"], "Resource": ["*"]}]}'
 ),
 (
     'ReadOnlyAccess',
-    'Read-only access to all resources: allows reading definitions, configurations, and metadata',
+    'Read-only access to all resources',
     '{"Version": "2012-10-17", "Statement": [{"Sid": "ReadOnlyAccess", "Effect": "Allow", "Action": ["*:read", "*:list", "*:get"], "Resource": ["*"]}]}'
 ),
 (
     'DeploymentManagement',
-    'Full access to manage deployments and view team information including definitions and configurations',
+    'Full access to manage deployments and view teams',
     '{"Version": "2012-10-17", "Statement": [{"Sid": "DeploymentManagement", "Effect": "Allow", "Action": ["team:read", "team:list", "team:get", "deployment:create", "deployment:modify", "deployment:get", "deployment:list", "deployment:read", "deployment:delete"], "Resource": ["*"]}]}'
 ),
 (
     'WorkspaceManagement',
-    'Full access to create and manage workspaces (agents & workflows), including reading workspace definitions and configurations (content field), deletion denied',
+    'Full access to manage workspaces (delete denied)',
     '{"Version": "2012-10-17", "Statement": [{"Sid": "WorkspaceManagement", "Effect": "Allow", "Action": ["workspace:create", "workspace:modify", "workspace:get", "workspace:list", "workspace:read"], "Resource": ["workspace:*"]}, {"Sid": "DenyWorkspaceDelete", "Effect": "Deny", "Action": ["workspace:delete"], "Resource": ["workspace:*"]}]}'
 ),
 (
     'UserManagement',
-    'Full access to manage users including reading user definitions and configurations, deletion denied',
+    'Full access to manage users (delete denied)',
     '{"Version": "2012-10-17", "Statement": [{"Sid": "UserManagement", "Effect": "Allow", "Action": ["user:create", "user:modify", "user:get", "user:list", "user:read"], "Resource": ["user:*"]}, {"Sid": "DenyUserDelete", "Effect": "Deny", "Action": ["user:delete"], "Resource": ["user:*"]}]}'
 ),
 (
     'RoleAndPolicyViewer',
-    'Read-only access to view roles and policies: allows reading role definitions, policy definitions, and full policy configurations (JSON content)',
+    'Read-only access to view roles and policies',
     '{"Version": "2012-10-17", "Statement": [{"Sid": "RoleAndPolicyViewer", "Effect": "Allow", "Action": ["role:get", "role:list", "role:read", "policy:get", "policy:list", "policy:read"], "Resource": ["*"]}]}'
 );
 
@@ -151,13 +151,13 @@ INSERT INTO policies (name, description, content) VALUES
 -- Roles use kebab-case naming convention
 -- Note: Roles with read access allow reading resource definitions and configurations
 INSERT INTO roles (name, description) VALUES
-('administrator', 'Full administrative access to all resources including definitions and configurations'),
-('team-manager', 'Full access to manage teams and team members, including reading team definitions and configurations'),
-('read-only-viewer', 'Read-only access to all resources: can read definitions, configurations, and metadata'),
-('deployment-manager', 'Full access to manage deployments and view team information including definitions and configurations'),
-('workspace-manager', 'Full access to manage workspaces (agents & workflows), including reading workspace definitions and configurations (content field)'),
-('user-manager', 'Full access to manage users including reading user definitions and configurations'),
-('role-viewer', 'Read-only access to view roles and policies: can read role definitions, policy definitions, and full policy configurations (JSON content)');
+('administrator', 'Full administrative access to all resources'),
+('team-manager', 'Full access to manage teams and team members'),
+('read-only-viewer', 'Read-only access to all resources'),
+('deployment-manager', 'Full access to manage deployments and view teams'),
+('workspace-manager', 'Full access to manage workspaces (agents & workflows)'),
+('user-manager', 'Full access to manage users'),
+('role-viewer', 'Read-only access to view roles and policies');
 
 -- Link Roles to Policies
 INSERT INTO role_policies (role_id, policy_id)
