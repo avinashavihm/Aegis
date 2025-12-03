@@ -1,0 +1,9 @@
+{
+  "statements": [
+    {
+      "effect": "Allow",
+      "actions": ["workspace:read", "workspace:write"],
+      "resources": ["workspace:test-workspace"]
+    }
+  ]
+}

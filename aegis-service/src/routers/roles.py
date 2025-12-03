@@ -202,6 +202,99 @@ async def update_role(
             
     return dict(updated_role)
 
+@router.post("/{role_identifier}/policies/{policy_identifier}")
+async def attach_policy_to_role(
+    role_identifier: str,
+    policy_identifier: str,
+    current_user_id: UUID = Depends(get_current_user_id)
+):
+    """Attach a policy to a role."""
+    with get_db_connection(str(current_user_id)) as conn:
+        with conn.cursor() as cur:
+            # Resolve role ID
+            try:
+                UUID(role_identifier)
+                cur.execute("SELECT id FROM roles WHERE id = %s", (role_identifier,))
+            except ValueError:
+                cur.execute("SELECT id FROM roles WHERE name = %s", (role_identifier,))
+            
+            role = cur.fetchone()
+            if not role:
+                raise HTTPException(status_code=404, detail="Role not found")
+            role_id = role['id']
+            
+            # Resolve policy ID
+            try:
+                UUID(policy_identifier)
+                cur.execute("SELECT id FROM policies WHERE id = %s", (policy_identifier,))
+            except ValueError:
+                cur.execute("SELECT id FROM policies WHERE name = %s", (policy_identifier,))
+            
+            policy = cur.fetchone()
+            if not policy:
+                raise HTTPException(status_code=404, detail="Policy not found")
+            policy_id = policy['id']
+            
+            # Check if already attached
+            cur.execute(
+                "SELECT 1 FROM role_policies WHERE role_id = %s AND policy_id = %s",
+                (role_id, policy_id)
+            )
+            if cur.fetchone():
+                raise HTTPException(status_code=409, detail="Policy already attached to this role")
+            
+            # Attach policy
+            cur.execute(
+                "INSERT INTO role_policies (role_id, policy_id) VALUES (%s, %s)",
+                (role_id, policy_id)
+            )
+            conn.commit()
+            
+    return {"message": "Policy attached successfully"}
+
+@router.delete("/{role_identifier}/policies/{policy_identifier}", status_code=status.HTTP_204_NO_CONTENT)
+async def detach_policy_from_role(
+    role_identifier: str,
+    policy_identifier: str,
+    current_user_id: UUID = Depends(get_current_user_id)
+):
+    """Detach a policy from a role."""
+    with get_db_connection(str(current_user_id)) as conn:
+        with conn.cursor() as cur:
+            # Resolve role ID
+            try:
+                UUID(role_identifier)
+                cur.execute("SELECT id FROM roles WHERE id = %s", (role_identifier,))
+            except ValueError:
+                cur.execute("SELECT id FROM roles WHERE name = %s", (role_identifier,))
+            
+            role = cur.fetchone()
+            if not role:
+                raise HTTPException(status_code=404, detail="Role not found")
+            role_id = role['id']
+            
+            # Resolve policy ID
+            try:
+                UUID(policy_identifier)
+                cur.execute("SELECT id FROM policies WHERE id = %s", (policy_identifier,))
+            except ValueError:
+                cur.execute("SELECT id FROM policies WHERE name = %s", (policy_identifier,))
+            
+            policy = cur.fetchone()
+            if not policy:
+                raise HTTPException(status_code=404, detail="Policy not found")
+            policy_id = policy['id']
+            
+            # Detach policy
+            result = cur.execute(
+                "DELETE FROM role_policies WHERE role_id = %s AND policy_id = %s",
+                (role_id, policy_id)
+            )
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Policy not attached to this role")
+                
+            conn.commit()
+
 @router.delete("/{role_identifier}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_role(
     role_identifier: str,

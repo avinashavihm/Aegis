@@ -647,6 +647,20 @@ CREATE POLICY role_policies_read_access ON role_policies
         OR current_user_has_any_role()
     );
 
+-- Insert: Only admins can attach policies to roles
+CREATE POLICY role_policies_insert ON role_policies
+    FOR INSERT
+    WITH CHECK (
+        current_user_is_admin()
+    );
+
+-- Delete: Only admins can detach policies from roles
+CREATE POLICY role_policies_delete ON role_policies
+    FOR DELETE
+    USING (
+        current_user_is_admin()
+    );
+
 -- 8. Workspaces Table
 -- Read/List/Get: Admins see all, owners see their own, users with allow policy see workspaces (unless denied)
 -- Read access allows viewing workspace definitions, descriptions, and content (agent/workflow configurations)

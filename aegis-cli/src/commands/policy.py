@@ -16,7 +16,7 @@ def create(
     name: str,
     content: Optional[str] = typer.Option(None, "--content", "-c", help="Policy content (JSON string)"),
     file: Optional[str] = typer.Option(None, "--file", "-f", help="Path to JSON file containing policy content"),
-    description: str = typer.Option(None, "--desc", "-d", help="Policy description")
+    description: Optional[str] = typer.Option(None, "--desc", "-d", help="Policy description")
 ):
     """Create a new policy from JSON content or file."""
     client = get_api_client()
@@ -217,7 +217,7 @@ def show_policy(policy_identifier: str, output: Optional[OutputFormat] = None):
 def update(
     policy_identifier: str = typer.Argument(..., help="Policy name or ID"),
     name: str = typer.Option(None, "--name", "-n", help="New name"),
-    description: str = typer.Option(None, "--desc", "-d", help="New description"),
+    description: Optional[str] = typer.Option(None, "--desc", "-d", help="New description"),
     content: Optional[str] = typer.Option(None, "--content", "-c", help="New content (JSON string)"),
     file: Optional[str] = typer.Option(None, "--file", "-f", help="Path to JSON file containing new policy content")
 ):

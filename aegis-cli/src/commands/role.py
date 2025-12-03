@@ -182,7 +182,7 @@ def show_role(
 def update(
     role_identifier: str = typer.Argument(..., help="Role name or ID"),
     name: str = typer.Option(None, "--name", "-n", help="New name"),
-    description: str = typer.Option(None, "--desc", "-d", help="New description"),
+    description: Optional[str] = typer.Option(None, "--desc", "-d", help="New description"),
     policy_ids: List[str] = typer.Option(None, "--policy", "-p", help="Policy IDs or Names to attach (replaces existing)")
 ):
     """Update a role."""
