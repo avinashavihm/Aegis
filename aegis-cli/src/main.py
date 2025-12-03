@@ -302,9 +302,6 @@ def edit(
             
             with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as tf:
                 temp_path = tf.name
-                tf.write(f"# Edit {resource_type}\n")
-                tf.write(f"# Save and close to apply changes\n")
-                tf.write(f"# You can modify, add, or remove items\n\n")
                 yaml.dump(clean_data, tf, default_flow_style=False, sort_keys=False)
             
             try:
@@ -369,8 +366,6 @@ def edit(
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as tf:
             temp_path = tf.name
-            tf.write(f"# Edit {resource_type}: {identifier}\n")
-            tf.write(f"# Save and close to apply changes\n\n")
             yaml.dump(clean_data, tf, default_flow_style=False, sort_keys=False)
         
         try:

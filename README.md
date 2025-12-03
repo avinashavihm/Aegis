@@ -52,10 +52,10 @@ Complete platform for managing users, teams, and RBAC using PostgreSQL Row Level
 
 ```bash
 # Start PostgreSQL + Aegis Service
-docker compose up -d
+nerdctl compose up -d
 
 # Check status
-docker compose ps
+nerdctl compose ps
 ```
 
 ### 2. Install and Use CLI
@@ -66,9 +66,12 @@ uv venv
 source .venv/bin/activate
 uv pip install -e .
 
-# Register and login
-aegis user create john --email john@example.com -p secret123
-aegis login --username john -p secret123
+# Login with default admin account
+aegis login --username root --password admin
+
+# Or register a new user
+aegis user create yaswanth --email yaswanth@example.com -p secret123
+aegis login --username yaswanth -p secret123
 
 # Create team
 aegis team create "Production"
@@ -115,12 +118,19 @@ Base URL: `http://localhost:8000`
 - `GET /users/{id}` - Get user (includes teams & roles)
 - `PUT /users/{id}` - Update user
 
-### Teams (formerly Workspaces)
+### Teams
 - `POST /teams` - Create team
 - `GET /teams` - List teams
 - `GET /teams/{id}` - Get team
 - `PUT /teams/{id}` - Update team
 - `DELETE /teams/{id}` - Delete team
+
+### Workspaces
+- `POST /workspaces` - Create workspace
+- `GET /workspaces` - List workspaces
+- `GET /workspaces/{id}` - Get workspace
+- `PUT /workspaces/{id}` - Update workspace
+- `DELETE /workspaces/{id}` - Delete workspace
 
 ### Members
 - `GET /teams/{id}/members` - List members
@@ -130,6 +140,8 @@ Base URL: `http://localhost:8000`
 ### Policies & Roles
 - `GET /policies` - List policies
 - `POST /policies` - Create policy
+- `PUT /policies/{id}` - Update policy
+- `DELETE /policies/{id}` - Delete policy
 - `GET /roles` - List roles (all roles are global)
 - `POST /roles` - Create role with attached policies
 - `PUT /roles/{id}` - Update role
@@ -141,13 +153,13 @@ Roles are global collections of policies that define permissions. Roles can be a
 
 | Role | Permissions |
 |------|-------------|
-| **administrator** | Full administrative access to all resources including definitions and configurations |
-| **team-manager** | Full access to manage teams and team members, including reading team definitions and configurations |
-| **read-only-viewer** | Read-only access to all resources: can read definitions, configurations, and metadata |
-| **deployment-manager** | Full access to manage deployments and view team information including definitions and configurations |
-| **workspace-manager** | Full access to manage workspaces (agents & workflows), including reading workspace definitions and configurations (content field) |
-| **user-manager** | Full access to manage users including reading user definitions and configurations |
-| **role-viewer** | Read-only access to view roles and policies: can read role definitions, policy definitions, and full policy configurations (JSON content) |
+| **administrator** | Full administrative access to all resources |
+| **team-manager** | Full access to manage teams and team members |
+| **read-only-viewer** | Read-only access to all resources |
+| **deployment-manager** | Full access to manage deployments and view teams |
+| **workspace-manager** | Full access to manage workspaces (agents & workflows) |
+| **user-manager** | Full access to manage users |
+| **role-viewer** | Read-only access to view roles and policies |
 
 **Key Points:**
 - All roles are **global** (not team-scoped)
@@ -215,8 +227,8 @@ uvicorn src.main:app --reload
 Modify `init.sql` and rebuild:
 
 ```bash
-docker compose down -v  # WARNING: Deletes all data
-docker compose up -d
+nerdctl compose down -v  # WARNING: Deletes all data
+nerdctl compose up -d
 ```
 
 ## Project Structure
@@ -262,29 +274,62 @@ Aegis/
 ✅ **CORS Protection**  
 ✅ **Environment-based Secrets**
 
+## Default Credentials
+
+On first deployment, a default admin account is created:
+- **Username:** `root`
+- **Password:** `admin`
+
+**Important:** Change the default password after first login in production environments.
+
+## Delete Commands
+
+All delete commands support the `-y` or `--yes` flag to skip confirmation prompts:
+
+```bash
+# Delete with confirmation
+aegis user delete username
+aegis team delete team-name
+aegis workspace delete workspace-name
+aegis role delete role-name
+aegis policy delete policy-name
+
+# Delete without confirmation (quiet mode)
+aegis user delete username -y
+aegis team delete team-name -y
+aegis workspace delete workspace-name -y
+aegis role delete role-name -y
+aegis policy delete policy-name -y
+```
+
 ## Troubleshooting
 
 **CLI can't connect to API:**
 ```bash
 # Check if service is running
-docker compose ps
+nerdctl compose ps
 
 # Check API URL in CLI config
 cat ~/.aegis/config
 ```
 
 **Permission denied errors:**
-- Check if you're logged in: `aegis user me`
-- Verify your role in team: `aegis team members`
+- Check if you're logged in: `aegis get user`
+- Verify your role: `aegis get roles`
 
 **Database connection failed:**
 ```bash
 # Check PostgreSQL logs
-docker compose logs postgres
+nerdctl compose logs postgres
 
 # Restart services
-docker compose restart
+nerdctl compose restart
 ```
+
+**Error messages:**
+- All error messages now display as clear text instead of generic "Internal Server Error"
+- Database connection errors show helpful messages
+- RLS policy violations show specific error details
 
 ## License
 

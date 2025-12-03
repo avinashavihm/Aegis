@@ -28,10 +28,18 @@ FastAPI Backend Service for Agentic Ops with RBAC enforcement via PostgreSQL Row
    DB_HOST=localhost
    DB_PORT=5432
    DB_NAME=agentic_ops
-   DB_USER=admin
+   DB_USER=aegis_app
    DB_PASSWORD=password123
    SECRET_KEY=your-secret-key-here
    ```
+
+## Default Credentials
+
+On first deployment, a default admin account is created:
+- **Username:** `root`
+- **Password:** `admin`
+
+**Important:** Change the default password after first login in production environments.
 
 ## Running
 
@@ -59,17 +67,43 @@ Once running, visit:
 ### Users
 - `GET /users` - List users
 - `GET /users/{id}` - Get user details
-- `PUT /users/{id}` - Update user (self only)
+- `PUT /users/{id}` - Update user
+- `DELETE /users/{id}` - Delete user
 
 ### Workspaces
 - `POST /workspaces` - Create workspace
 - `GET /workspaces` - List workspaces
 - `GET /workspaces/{id}` - Get workspace
-- `PUT /workspaces/{id}` - Update workspace (Owner/Admin)
-- `DELETE /workspaces/{id}` - Delete workspace (Owner only)
-- `GET /workspaces/{id}/members` - List members
-- `POST /workspaces/{id}/members` - Add member (Owner/Admin)
-- `DELETE /workspaces/{id}/members/{user_id}` - Remove member
+- `PUT /workspaces/{id}` - Update workspace
+- `DELETE /workspaces/{id}` - Delete workspace
+
+### Teams
+- `POST /teams` - Create team
+- `GET /teams` - List teams
+- `GET /teams/{id}` - Get team
+- `PUT /teams/{id}` - Update team
+- `DELETE /teams/{id}` - Delete team
+- `GET /teams/{id}/members` - List members
+- `POST /teams/{id}/members` - Add member
+- `DELETE /teams/{id}/members/{user_id}` - Remove member
+- `POST /teams/{id}/roles/{role_id}` - Attach role to team
+- `DELETE /teams/{id}/roles/{role_id}` - Detach role from team
+
+### Policies
+- `GET /policies` - List policies
+- `POST /policies` - Create policy
+- `GET /policies/{id}` - Get policy
+- `PUT /policies/{id}` - Update policy
+- `DELETE /policies/{id}` - Delete policy
+
+### Roles
+- `GET /roles` - List roles
+- `POST /roles` - Create role
+- `GET /roles/{id}` - Get role
+- `PUT /roles/{id}` - Update role
+- `DELETE /roles/{id}` - Delete role
+- `POST /roles/{id}/policies/{policy_id}` - Attach policy to role
+- `DELETE /roles/{id}/policies/{policy_id}` - Detach policy from role
 
 ## RBAC Implementation
 

@@ -123,13 +123,13 @@ aegis get workspace "My Workspace"  # or 'aegis get ws "My Workspace"'
 Policies define permissions and are attached to roles. Policies use AWS IAM-style format with granular CRUD actions.
 
 **Default Policies:**
-- `AdministratorAccess` - Full administrative access to all resources including definitions and configurations
-- `TeamManagement` - Full access to manage teams and team members, including reading team definitions and configurations
-- `ReadOnlyAccess` - Read-only access to all resources: allows reading definitions, configurations, and metadata
-- `DeploymentManagement` - Full access to manage deployments and view team information including definitions and configurations
-- `WorkspaceManagement` - Full access to create and manage workspaces (agents & workflows), including reading workspace definitions and configurations (content field), deletion denied
-- `UserManagement` - Full access to manage users including reading user definitions and configurations, deletion denied
-- `RoleAndPolicyViewer` - Read-only access to view roles and policies: allows reading role definitions, policy definitions, and full policy configurations (JSON content)
+- `AdministratorAccess` - Full administrative access to all resources
+- `TeamManagement` - Full access to manage teams and team members
+- `ReadOnlyAccess` - Read-only access to all resources
+- `DeploymentManagement` - Full access to manage deployments and view teams
+- `WorkspaceManagement` - Full access to manage workspaces (delete denied)
+- `UserManagement` - Full access to manage users (delete denied)
+- `RoleAndPolicyViewer` - Read-only access to view roles and policies
 
 **Note:** All policies with read access allow reading resource definitions and configurations, not just basic metadata.
 
@@ -270,13 +270,13 @@ When using multiple policies in one file:
 Roles are global and can be attached to users or teams. They link policies to define permissions.
 
 **Default Roles:**
-- `administrator` - Full administrative access to all resources including definitions and configurations
-- `team-manager` - Full access to manage teams and team members, including reading team definitions and configurations
-- `read-only-viewer` - Read-only access to all resources: can read definitions, configurations, and metadata
-- `deployment-manager` - Full access to manage deployments and view team information including definitions and configurations
-- `workspace-manager` - Full access to manage workspaces (agents & workflows), including reading workspace definitions and configurations (content field)
-- `user-manager` - Full access to manage users including reading user definitions and configurations
-- `role-viewer` - Read-only access to view roles and policies: can read role definitions, policy definitions, and full policy configurations (JSON content)
+- `administrator` - Full administrative access to all resources
+- `team-manager` - Full access to manage teams and team members
+- `read-only-viewer` - Read-only access to all resources
+- `deployment-manager` - Full access to manage deployments and view teams
+- `workspace-manager` - Full access to manage workspaces (agents & workflows)
+- `user-manager` - Full access to manage users
+- `role-viewer` - Read-only access to view roles and policies
 
 ```bash
 # List roles
@@ -302,6 +302,42 @@ aegis edit role role-name
 
 # Update role
 aegis role edit role-name --desc "Updated description" --policy Policy1 --policy Policy2
+
+# Delete role (with confirmation)
+aegis role delete role-name
+
+# Delete role without confirmation
+aegis role delete role-name -y
+```
+
+### Delete Operations
+
+All delete commands support the `-y` or `--yes` flag to skip confirmation:
+
+```bash
+# Delete user
+aegis user delete username -y
+
+# Delete team
+aegis team delete team-name -y
+
+# Delete workspace
+aegis workspace delete workspace-name -y
+
+# Delete role
+aegis role delete role-name -y
+
+# Delete policy
+aegis policy delete policy-name -y
+
+# Remove member from team
+aegis team remove-member username --team team-name -y
+
+# Remove role from team
+aegis team remove-role role-name --team team-name -y
+
+# Remove role from user
+aegis user remove-role username role-name -y
 ```
 
 ## Example Workflow
@@ -311,7 +347,10 @@ aegis role edit role-name --desc "Updated description" --policy Policy1 --policy
 cd ../aegis-service
 uvicorn src.main:app --reload
 
-# 2. Register and login
+# 2. Login with default admin account
+aegis login --username root --password admin
+
+# Or register a new user
 aegis user create john --email john@example.com -p secret123
 aegis login --username john -p secret123
 
