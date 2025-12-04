@@ -68,8 +68,6 @@ def list_teams(
         
         # Format roles and members for display
         for t in teams:
-            # Rename id to team_id for display
-            t["team_id"] = t["id"]
             # Format roles and members for display
             t["team_roles"] = ", ".join(t.get("team_roles", [])) or "-"
             t["members"] = ", ".join(t.get("members", [])) or "-"
@@ -78,17 +76,18 @@ def list_teams(
         
         # For structured formats (JSON/YAML), remove IDs, slugs, and marker column
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
+            from src.utils import remove_ids_recursive
             clean_teams = []
             for t in teams:
                 # Convert comma-separated strings back to lists
                 team_roles_list = [r.strip() for r in t.get("team_roles", "").split(",") if r.strip()] if isinstance(t.get("team_roles"), str) else t.get("team_roles", [])
                 members_list = [m.strip() for m in t.get("members", "").split(",") if m.strip()] if isinstance(t.get("members"), str) else t.get("members", [])
                 
-                clean_t = {
+                clean_t = remove_ids_recursive({
                     "name": t["name"],
                     "team_roles": team_roles_list,
                     "members": members_list
-                }
+                })
                 clean_teams.append(clean_t)
             print_output(
                 clean_teams,
@@ -412,11 +411,12 @@ def show_team(team_identifier: str, output: Optional[OutputFormat] = None):
         
         # For structured formats, remove IDs
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
-            clean_team = {
+            from src.utils import remove_ids_recursive
+            clean_team = remove_ids_recursive({
                 "name": team["name"],
                 "team_roles": [{"name": r.get("name", "")} for r in team.get("team_roles", [])],
                 "members": [{"username": m.get("username", "")} for m in team.get("members", [])]
-            }
+            })
             print_output(clean_team)
         else:
             # For text/table, show as single-row table with name first

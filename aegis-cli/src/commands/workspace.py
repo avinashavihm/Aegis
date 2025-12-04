@@ -68,14 +68,15 @@ def list_workspaces(
         
         # For structured formats, remove IDs
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
+            from src.utils import remove_ids_recursive
             clean_workspaces = []
             for ws in workspaces:
-                clean_ws = {
+                clean_ws = remove_ids_recursive({
                     "name": ws["name"],
                     "description": ws.get("description", ""),
                     "owner": ws.get("owner_username", ""),
                     "content": ws.get("content", {})
-                }
+                })
                 clean_workspaces.append(clean_ws)
             print_output(clean_workspaces, title="Workspaces")
         else:
@@ -123,12 +124,13 @@ def show_workspace(
         
         # For structured formats, remove IDs
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
-            clean_workspace = {
+            from src.utils import remove_ids_recursive
+            clean_workspace = remove_ids_recursive({
                 "name": workspace["name"],
                 "description": workspace.get("description", ""),
                 "owner": workspace.get("owner_username", ""),
                 "content": workspace.get("content", {})
-            }
+            })
             print_output(clean_workspace)
         else:
             # Show as single-row table

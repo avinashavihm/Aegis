@@ -328,20 +328,79 @@ async def delete_role(
                 where_clause = "name = %s"
                 identifier = role_identifier
                 
-            # Check if role is in use
-            # Need to get ID first if name was used
-            cur.execute(f"SELECT id FROM roles WHERE {where_clause}", (identifier,))
+            # Get role ID and name
+            cur.execute(f"SELECT id, name FROM roles WHERE {where_clause}", (identifier,))
             role = cur.fetchone()
             if not role:
                 raise HTTPException(status_code=404, detail="Role not found")
             role_id = role['id']
+            role_name = role['name']
             
-            cur.execute("SELECT 1 FROM team_members WHERE role_id = %s LIMIT 1", (role_id,))
-            if cur.fetchone():
+            # Check if role is attached using SECURITY DEFINER function
+            cur.execute(
+                "SELECT attachment_type, user_id, username, team_id, team_name FROM check_role_attachments(%s::uuid)",
+                (role_id,)
+            )
+            attachments = cur.fetchall()
+            
+            # Separate attachments by type
+            attached_users = [a for a in attachments if a["attachment_type"] == "user"]
+            attached_teams = [a for a in attachments if a["attachment_type"] == "team"]
+            team_member_assignments = [a for a in attachments if a["attachment_type"] == "team_member"]
+            
+            # Build error message if role is in use
+            error_parts = []
+            if attached_users:
+                user_names = [u["username"] for u in attached_users]
+                if len(user_names) == 1:
+                    error_parts.append(f"attached to user '{user_names[0]}'")
+                else:
+                    user_list = ", ".join(user_names[:3])
+                    if len(attached_users) > 3:
+                        user_list += f" and {len(attached_users) - 3} more"
+                    error_parts.append(f"attached to users: {user_list}")
+            
+            if attached_teams:
+                team_names = [t["name"] for t in attached_teams]
+                if len(team_names) == 1:
+                    error_parts.append(f"attached to team '{team_names[0]}'")
+                else:
+                    team_list = ", ".join(team_names[:3])
+                    if len(attached_teams) > 3:
+                        team_list += f" and {len(attached_teams) - 3} more"
+                    error_parts.append(f"attached to teams: {team_list}")
+            
+            if team_member_assignments:
+                assignments = [f"{a['username']} in team '{a['team_name']}'" for a in team_member_assignments[:3]]
+                assignment_list = ", ".join(assignments)
+                if len(team_member_assignments) > 3:
+                    assignment_list += f" and {len(team_member_assignments) - 3} more"
+                error_parts.append(f"assigned to team members: {assignment_list}")
+            
+            if error_parts:
+                error_msg = f"Cannot delete role '{role_name}' because it is {', '.join(error_parts)}. Please remove the role from all users and teams first."
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Cannot delete role that is assigned to members"
+                    detail=error_msg
                 )
-                
-            cur.execute("DELETE FROM roles WHERE id = %s", (role_id,))
-            conn.commit()
+            
+            try:
+                cur.execute("DELETE FROM roles WHERE id = %s", (role_id,))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                error_msg = str(e)
+                if "foreign key constraint" in error_msg.lower():
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Cannot delete role because it is attached to users or teams"
+                    )
+                if "row-level security" in error_msg.lower():
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=error_msg
+                    )
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=error_msg
+                )

@@ -34,13 +34,14 @@ def list_roles(
         
         # For structured formats (JSON/YAML), remove IDs and timestamps
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
+            from src.utils import remove_ids_recursive
             clean_roles = []
             for r in roles:
-                clean_r = {
+                clean_r = remove_ids_recursive({
                     "name": r["name"],
                     "description": r.get("description", ""),
-                    "policies": [p.get('name', p.get('policy_name', '')) for p in r.get("policies", [])]
-                }
+                    "policies": [{"name": p.get('name', p.get('policy_name', ''))} for p in r.get("policies", [])]
+                })
                 clean_roles.append(clean_r)
             print_output(clean_roles)
         else:
@@ -52,8 +53,7 @@ def list_roles(
                 display_roles.append({
                     "name": r["name"],
                     "description": r["description"] or "",
-                    "policies": policy_names,
-                    "id": r["id"]
+                    "policies": policy_names
                 })
                 
             print_output(
@@ -153,32 +153,27 @@ def show_role(
         
         # For structured formats, remove IDs
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
-            clean_role = {
+            from src.utils import remove_ids_recursive
+            clean_role = remove_ids_recursive({
                 "name": role["name"],
-                "description": role.get("description", "")
-            }
-            if "policies" in role:
-                clean_role["policies"] = [{"name": p.get("name", "")} for p in role["policies"]]
+                "description": role.get("description", ""),
+                "policies": [{"name": p.get("name", "")} for p in role.get("policies", [])]
+            })
             print_output(clean_role)
         else:
-            # For text/table, show as a single-row table
+            # For text/table, show as a single-row table with policies in same row
+            policies = role.get("policies", [])
+            policy_names = ", ".join([p.get("name", "") for p in policies]) if policies else "-"
+            
             display_role = {
                 "name": role["name"],
-                "description": role["description"] or ""
+                "description": role["description"] or "",
+                "policies": policy_names
             }
             print_output(
                 display_role,
-                columns=["name", "description"]
+                columns=["name", "description", "policies"]
             )
-            
-            # Show attached policies
-            if "policies" in role and role["policies"]:
-                console.print("\n[bold]Attached Policies:[/bold]")
-                print_output(
-                    role["policies"],
-                    columns=["name", "description"],
-                    title=None
-                )
             
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")

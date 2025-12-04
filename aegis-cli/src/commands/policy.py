@@ -177,13 +177,14 @@ def list_policies(
         
         # For structured formats (JSON/YAML), remove IDs and timestamps
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
+            from src.utils import remove_ids_recursive
             clean_policies = []
             for p in policies:
-                clean_p = {
+                clean_p = remove_ids_recursive({
                     "name": p["name"],
                     "description": p.get("description", ""),
                     "content": p.get("content", {})
-                }
+                })
                 clean_policies.append(clean_p)
             print_output(clean_policies, title="Policies")
         else:
@@ -206,6 +207,10 @@ def show_policy(policy_identifier: str, output: Optional[OutputFormat] = None):
     try:
         response = client.get(f"/policies/{policy_identifier}")
         
+        if response.status_code == 404:
+            console.print(f"[red]Error:[/red] Policy '{policy_identifier}' not found")
+            return
+        
         if response.status_code != 200:
             try:
                 error_detail = response.json().get('detail', response.text)
@@ -214,22 +219,37 @@ def show_policy(policy_identifier: str, output: Optional[OutputFormat] = None):
                 console.print(f"[red]Error:[/red] {response.text}")
             return
         
-        policy = response.json()
+        try:
+            policy = response.json()
+        except:
+            console.print(f"[red]Error:[/red] Invalid response from server")
+            return
+        
+        if not policy or not isinstance(policy, dict):
+            console.print(f"[red]Error:[/red] Policy '{policy_identifier}' not found")
+            return
         
         from src.utils import current_output_format, print_output
         
-        # For structured formats, output full data including content
+        # For structured formats (JSON/YAML), include content
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
-            print_output(policy)
+            from src.utils import remove_ids_recursive
+            clean_policy = remove_ids_recursive({
+                "name": policy.get("name", ""),
+                "description": policy.get("description", ""),
+                "content": policy.get("content", {})
+            })
+            print_output(clean_policy)
         else:
-            # For text/table, show summary
+            # For text/table, show only name and description (no content)
+            display_policy = {
+                "name": policy.get("name", ""),
+                "description": policy.get("description", "")
+            }
             print_output(
-                policy,
-                columns=["name", "id", "description"]
+                display_policy,
+                columns=["name", "description"]
             )
-            # Show content separately
-            console.print("\n[bold]Content:[/bold]")
-            console.print_json(data=policy["content"])
             
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect to API. Is the service running?")

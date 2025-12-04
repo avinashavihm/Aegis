@@ -32,6 +32,28 @@ def format_column_name(col: str) -> str:
             formatted_parts.append(part.title())
     return '_'.join(formatted_parts)
 
+def remove_ids_recursive(data: Any) -> Any:
+    """
+    Recursively remove all ID fields from data structure.
+    Removes fields named 'id' or ending with '_id' from dicts and lists.
+    """
+    if isinstance(data, dict):
+        # Create new dict without ID fields
+        cleaned = {}
+        for key, value in data.items():
+            # Skip any field that is 'id' or ends with '_id'
+            if key == 'id' or key.endswith('_id'):
+                continue
+            # Recursively clean nested structures
+            cleaned[key] = remove_ids_recursive(value)
+        return cleaned
+    elif isinstance(data, list):
+        # Recursively clean each item in the list
+        return [remove_ids_recursive(item) for item in data]
+    else:
+        # Return primitive values as-is
+        return data
+
 def print_output(data: Any, columns: List[str] = None, title: str = None):
     """
     Print data in the selected format.

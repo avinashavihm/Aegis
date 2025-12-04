@@ -110,6 +110,8 @@ async def get_policy(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Policy not found"
         )
+    
+    return dict(policy)
         
 @router.put("/{policy_identifier}")
 async def update_policy(
@@ -194,11 +196,62 @@ async def delete_policy(
                 UUID(policy_identifier)
                 policy_id = policy_identifier
             except ValueError:
-                cur.execute("SELECT id FROM policies WHERE name = %s", (policy_identifier,))
+                cur.execute("SELECT id, name FROM policies WHERE name = %s", (policy_identifier,))
                 result = cur.fetchone()
                 if not result:
                     raise HTTPException(status_code=404, detail="Policy not found")
                 policy_id = result["id"]
+                policy_name = result["name"]
+            else:
+                cur.execute("SELECT name FROM policies WHERE id = %s", (policy_id,))
+                result = cur.fetchone()
+                if not result:
+                    raise HTTPException(status_code=404, detail="Policy not found")
+                policy_name = result["name"]
+
+            # Check if policy is attached to any roles using SECURITY DEFINER function
+            try:
+                cur.execute(
+                    "SELECT role_id, role_name FROM check_policy_attached_to_roles(%s::uuid)",
+                    (policy_id,)
+                )
+                attached_roles_raw = cur.fetchall()
+            except Exception as e:
+                # If function doesn't exist or error, fall back to direct query
+                cur.execute(
+                    """SELECT r.id as role_id, r.name as role_name 
+                       FROM roles r
+                       JOIN role_policies rp ON r.id = rp.role_id
+                       WHERE rp.policy_id = %s
+                       LIMIT 5""",
+                    (policy_id,)
+                )
+                attached_roles_raw = cur.fetchall()
+            
+            # Convert to dict format for consistency
+            attached_roles = []
+            if attached_roles_raw:
+                for r in attached_roles_raw:
+                    attached_roles.append({
+                        "id": str(r.get("role_id", r.get("id", ""))),
+                        "name": str(r.get("role_name", r.get("name", "")))
+                    })
+            
+            if attached_roles:
+                role_names = [r["name"] for r in attached_roles]
+                if len(role_names) == 1:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Cannot delete policy '{policy_name}' because it is attached to role '{role_names[0]}'. Please detach the policy from the role first."
+                    )
+                else:
+                    role_list = ", ".join(role_names[:3])
+                    if len(attached_roles) > 3:
+                        role_list += f" and {len(attached_roles) - 3} more"
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Cannot delete policy '{policy_name}' because it is attached to roles: {role_list}. Please detach the policy from all roles first."
+                    )
 
             try:
                 cur.execute("DELETE FROM policies WHERE id = %s RETURNING id", (policy_id,))
@@ -209,9 +262,15 @@ async def delete_policy(
                     raise HTTPException(status_code=404, detail="Policy not found")
             except Exception as e:
                 conn.rollback()
-                if "foreign key constraint" in str(e):
+                error_msg = str(e)
+                if "foreign key constraint" in error_msg.lower():
                     raise HTTPException(
-                        status_code=400, 
+                        status_code=status.HTTP_400_BAD_REQUEST,
                         detail="Cannot delete policy because it is attached to roles"
                     )
-                raise HTTPException(status_code=400, detail=str(e))
+                if "row-level security" in error_msg.lower():
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=error_msg
+                    )
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=error_msg)

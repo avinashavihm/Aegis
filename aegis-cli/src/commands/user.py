@@ -129,15 +129,16 @@ def list_users(
         
         # For structured formats, remove IDs
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
+            from src.utils import remove_ids_recursive
             clean_users = []
             for user in users:
-                clean_u = {
+                clean_u = remove_ids_recursive({
                     "username": user["username"],
                     "email": user["email"],
                     "full_name": user.get("full_name", ""),
                     "teams": [{"name": t.get('team_name', ''), "role": t.get('role_name', '')} for t in user.get('teams', [])],
                     "roles": [r['name'] for r in user.get('roles', [])]
-                }
+                })
                 clean_users.append(clean_u)
             print_output(clean_users, title="Users")
         else:
@@ -202,13 +203,14 @@ def me(
         
         # For structured formats, remove IDs
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
-            clean_user = {
+            from src.utils import remove_ids_recursive
+            clean_user = remove_ids_recursive({
                 "username": user["username"],
                 "email": user["email"],
                 "full_name": user.get("full_name", ""),
                 "teams": [{"name": t.get('name', ''), "role": t.get('role_name', '')} for t in user.get('teams', [])],
                 "roles": [r['name'] for r in user.get('roles', [])]
-            }
+            })
             print_output(clean_user)
         else:
             # Format teams and roles like in show_user
@@ -263,13 +265,14 @@ def show_user(user_identifier: str, output: Optional[OutputFormat] = None):
         
         # For structured formats, remove IDs
         if current_output_format in [OutputFormat.JSON, OutputFormat.YAML]:
-            clean_user = {
+            from src.utils import remove_ids_recursive
+            clean_user = remove_ids_recursive({
                 "username": user["username"],
                 "email": user["email"],
                 "full_name": user.get("full_name", ""),
                 "teams": [{"name": t.get('name', ''), "role": t.get('role_name', '')} for t in user.get('teams', [])],
                 "roles": [r['name'] for r in user.get('roles', [])]
-            }
+            })
             print_output(clean_user)
         else:
             # Format teams and roles like in list view

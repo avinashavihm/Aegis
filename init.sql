@@ -361,6 +361,71 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Helper function to check if policy is attached to any roles (bypasses RLS)
+CREATE OR REPLACE FUNCTION check_policy_attached_to_roles(policy_uuid UUID) 
+RETURNS TABLE(role_id UUID, role_name VARCHAR) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT r.id, r.name
+    FROM roles r
+    JOIN role_policies rp ON r.id = rp.role_id
+    WHERE rp.policy_id = policy_uuid
+    LIMIT 5;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Helper function to check if role is attached to users or teams (bypasses RLS)
+CREATE OR REPLACE FUNCTION check_role_attachments(role_uuid UUID) 
+RETURNS TABLE(
+    attachment_type TEXT,
+    user_id UUID,
+    username VARCHAR,
+    team_id UUID,
+    team_name VARCHAR
+) AS $$
+BEGIN
+    -- Check user_roles
+    RETURN QUERY
+    SELECT 
+        'user'::TEXT,
+        u.id,
+        u.username,
+        NULL::UUID,
+        NULL::VARCHAR
+    FROM users u
+    JOIN user_roles ur ON u.id = ur.user_id
+    WHERE ur.role_id = role_uuid
+    LIMIT 5;
+    
+    -- Check team_roles
+    RETURN QUERY
+    SELECT 
+        'team'::TEXT,
+        NULL::UUID,
+        NULL::VARCHAR,
+        t.id,
+        t.name
+    FROM teams t
+    JOIN team_roles tr ON t.id = tr.team_id
+    WHERE tr.role_id = role_uuid
+    LIMIT 5;
+    
+    -- Check team_members
+    RETURN QUERY
+    SELECT 
+        'team_member'::TEXT,
+        u.id,
+        u.username,
+        t.id,
+        t.name
+    FROM team_members tm
+    JOIN users u ON tm.user_id = u.id
+    JOIN teams t ON tm.team_id = t.id
+    WHERE tm.role_id = role_uuid
+    LIMIT 5;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- RLS Policies (RBAC)
 
 -- 1. Users Table
