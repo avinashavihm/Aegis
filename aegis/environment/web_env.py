@@ -4,9 +4,14 @@ Web environment for web browsing (simplified, requests-based)
 
 import requests
 from bs4 import BeautifulSoup
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 import time
 from urllib.parse import unquote, parse_qs, urlparse
+
+try:  # Prefer the actively maintained package name
+    from ddgs import DDGS  # type: ignore
+except Exception:  # pragma: no cover - fallback to legacy package
+    from duckduckgo_search import DDGS  # type: ignore
 
 
 class WebEnv:
@@ -56,14 +61,32 @@ class WebEnv:
                 "content": text[:5000],  # Limit content length
                 "status_code": response.status_code
             }
+        except requests.exceptions.HTTPError as e:
+            status_code = getattr(e.response, "status_code", None)
+            hint = "Site blocked automated scraping (HTTP 403). Consider summarizing snippet text instead." \
+                if status_code == 403 else "HTTP error while fetching the page."
+            return {
+                "status": "error",
+                "url": url,
+                "error": str(e),
+                "status_code": status_code,
+                "hint": hint
+            }
         except requests.exceptions.RequestException as e:
             return {
                 "status": "error",
                 "url": url,
-                "error": str(e)
+                "error": str(e),
+                "hint": "Network error. Check connectivity or try again with a different site."
             }
     
-    def search_web(self, query: str, num_results: int = 5) -> Dict[str, any]:
+    def search_web(
+        self,
+        query: str,
+        num_results: int = 5,
+        focus_keywords: Optional[List[str]] = None,
+        region: Optional[str] = None
+    ) -> Dict[str, any]:
         """
         Search the web using DuckDuckGo (no API key required)
         
@@ -74,12 +97,14 @@ class WebEnv:
         Returns:
             Dictionary with search results
         """
+        focus_keywords = [kw.strip().lower() for kw in (focus_keywords or []) if kw and kw.strip()]
+        region = region or "wt-wt"
+        NOISE_DOMAINS = {"zhihu.com", "gov.uk", "yahoo.co.jp", "finance.yahoo.com"}
+        
         try:
-            from duckduckgo_search import DDGS
-            
             results = []
             with DDGS() as ddgs:
-                search_results = list(ddgs.text(query, max_results=num_results))
+                search_results = list(ddgs.text(query, max_results=num_results, region=region))
                 
                 for result in search_results:
                     url = result.get("href", "")
@@ -95,27 +120,52 @@ class WebEnv:
                         except:
                             pass  # Keep original URL if decoding fails
                     
+                    title = result.get("title", "")
+                    snippet = result.get("body", "")
+                    
+                    domain = urlparse(url if url.startswith("http") else f"https:{url}").netloc.lower()
+                    if any(noise in domain for noise in NOISE_DOMAINS):
+                        continue
+                    
                     results.append({
-                        "title": result.get("title", ""),
+                        "title": title,
                         "url": url,
-                        "snippet": result.get("body", "")
+                        "snippet": snippet
                     })
             
             if results:
-                # Format results as a readable string with clear instructions
-                formatted_results = f"Found {len(results)} results for '{query}':\n\n"
-                formatted_results += "IMPORTANT: To get full article content, use fetch_url(url) or fetch_and_extract(url) on the URLs below.\n\n"
-                for i, result in enumerate(results, 1):
+                def score(entry):
+                    if not focus_keywords:
+                        return 0
+                    haystack = f"{entry['title']} {entry['snippet']} {entry['url']}".lower()
+                    return sum(1 for kw in focus_keywords if kw in haystack)
+                
+                scored_results = sorted(results, key=score, reverse=True)
+                filtered_results = [
+                    r for r in scored_results
+                    if not focus_keywords or score(r) > 0
+                ]
+                if focus_keywords and not filtered_results:
+                    filtered_results = scored_results  # fall back to whatever we have
+                
+                formatted_results = f"Found {len(filtered_results)} results for '{query}':\n\n"
+                formatted_results += "IMPORTANT: Use fetch_url(url) or fetch_and_extract(url) to retrieve full content. Obey site terms and rate limits.\n\n"
+                for i, result in enumerate(filtered_results, 1):
                     formatted_results += f"{i}. {result['title']}\n"
                     formatted_results += f"   URL: {result['url']}\n"
                     formatted_results += f"   Preview: {result['snippet'][:200]}...\n\n"
                 
+                # Format results as a readable string with clear instructions
                 return {
                     "status": "success",
                     "query": query,
-                    "results": results,
+                    "results": filtered_results,
                     "formatted": formatted_results,
-                    "message": formatted_results
+                    "message": formatted_results,
+                    "meta": {
+                        "filtered_out": max(0, len(results) - len(filtered_results)),
+                        "focus_keywords": focus_keywords
+                    }
                 }
             else:
                 return {
@@ -183,7 +233,7 @@ class WebEnv:
                 "status": "error",
                 "query": query,
                 "error": str(e),
-                "message": f"Error performing web search: {str(e)}"
+                "message": f"Error performing web search: {str(e)}. Consider narrowing the query or trying different keywords."
             }
     
     def extract_content(self, html: str) -> str:

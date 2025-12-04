@@ -1,10 +1,52 @@
 """
 Aegis: Simplified LLM Agent Framework
+
+A comprehensive framework for building LLM-powered agents with:
+- Multi-agent orchestration
+- Conversational capabilities
+- Autonomous operations
+- Knowledge grounding
+- Agent Store with templates
 """
 
 from aegis.core import Aegis
-from aegis.types import Agent, Response, Result
+from aegis.types import (
+    Agent, Response, Result,
+    ConversationState, ConversationContext,
+    OutputFormat, StructuredInstruction,
+    TaskStatus, TaskPlan, SubTask,
+    EscalationLevel, EscalationRule,
+    AgentCapability
+)
 
-__version__ = "0.1.0"
-__all__ = ["Aegis", "Agent", "Response", "Result"]
+__version__ = "0.2.0"
 
+__all__ = [
+    # Core
+    "Aegis",
+    
+    # Types
+    "Agent",
+    "Response", 
+    "Result",
+    
+    # Conversation
+    "ConversationState",
+    "ConversationContext",
+    
+    # Instructions
+    "OutputFormat",
+    "StructuredInstruction",
+    
+    # Tasks
+    "TaskStatus",
+    "TaskPlan",
+    "SubTask",
+    
+    # Escalation
+    "EscalationLevel",
+    "EscalationRule",
+    
+    # Capabilities
+    "AgentCapability"
+]

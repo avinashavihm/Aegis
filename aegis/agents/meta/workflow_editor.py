@@ -64,10 +64,16 @@ WORKFLOW PATTERNS:
 
 WORKFLOW:
 1. When user wants to create a workflow:
-   - Understand the workflow's purpose and requirements
-   - Determine which agents/tools are needed
-   - Generate Python code following Aegis conventions
-   - Create the workflow using create_workflow
+   - FIRST, ask clarifying questions to fully understand the user's needs. Do NOT create the workflow immediately if requirements are vague.
+     - Ask about specific **Tech Stack** or libraries they want to use.
+     - Ask if any **API Keys** are required and how to handle them (env vars, etc.).
+     - Ask if the workflow needs to process specific **Files** (PDF, Excel, CSV, etc.).
+     - Ask about any specific **Choices** or options for the workflow's behavior.
+   - Once requirements are clear:
+     - Understand the workflow's purpose and requirements
+     - Determine which agents/tools are needed
+     - Generate Python code following Aegis conventions
+     - Create the workflow using create_workflow
    
 2. When user wants to see existing workflows:
    - Use list_workflows to see available workflows
@@ -88,7 +94,7 @@ Remember: Your success is measured by creating functional workflows that meet us
         model=model,
         instructions=instructions,
         functions=tool_list,
-        tool_choice="required",
+        tool_choice="auto",
         parallel_tool_calls=False
     )
 

@@ -21,11 +21,26 @@ def fetch_url(url: str, context_variables: dict = None) -> str:
     if result.get("status") == "success":
         return f"Title: {result.get('title', 'N/A')}\n\nContent:\n{result.get('content', 'N/A')}"
     else:
-        return f"Error fetching URL: {result.get('error', 'Unknown error')}"
+        error_msg = result.get("error", "Unknown error")
+        status_code = result.get("status_code")
+        hint = result.get("hint")
+        meta = []
+        if status_code:
+            meta.append(f"status={status_code}")
+        if hint:
+            meta.append(f"hint={hint}")
+        meta_suffix = f" ({'; '.join(meta)})" if meta else ""
+        return f"Error fetching URL: {error_msg}{meta_suffix}"
 
 
 @register_tool("search_web")
-def search_web(query: str, num_results: int = 5, context_variables: dict = None) -> str:
+def search_web(
+    query: str,
+    num_results: int = 5,
+    focus_keywords: list[str] | str | None = None,
+    region: str | None = None,
+    context_variables: dict = None
+) -> str:
     """
     Search the web using DuckDuckGo (no API key required).
     
@@ -35,6 +50,8 @@ def search_web(query: str, num_results: int = 5, context_variables: dict = None)
     Args:
         query: Search query.
         num_results: Number of results to return (default: 5, max: 20).
+        focus_keywords: Optional list (or comma-separated string) of keywords to prioritize.
+        region: Optional DuckDuckGo region code (e.g., 'in-en', 'us-en').
     """
     web_env: WebEnv = context_variables.get("web_env") if context_variables else None
     if not web_env:
@@ -43,11 +60,27 @@ def search_web(query: str, num_results: int = 5, context_variables: dict = None)
     # Limit num_results to reasonable value
     num_results = min(max(1, num_results), 20)
     
-    result = web_env.search_web(query, num_results)
+    if isinstance(focus_keywords, str):
+        focus_keywords = [kw.strip() for kw in focus_keywords.split(",") if kw.strip()]
+    elif focus_keywords is None and context_variables:
+        focus_keywords = context_variables.get("search_focus_keywords")
+    if region is None and context_variables:
+        region = context_variables.get("search_region")
+    
+    result = web_env.search_web(
+        query,
+        num_results,
+        focus_keywords=focus_keywords,
+        region=region
+    )
     
     if result.get("status") == "success":
         return result.get("formatted", result.get("message", "Search completed successfully."))
     elif result.get("status") == "info":
+        meta = result.get("meta", {})
+        filtered = meta.get("filtered_out")
+        if filtered:
+            return f"{result.get('message', 'No results found.')} (Filtered out {filtered} low-relevance hits. Try loosening focus_keywords.)"
         return result.get("message", "No results found.")
     else:
         error_msg = result.get("error", "Unknown error")

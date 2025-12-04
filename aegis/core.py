@@ -388,10 +388,25 @@ class Aegis:
         actual_max_turns = min(max_turns, 10) if max_turns != float("inf") else 10
         
         # Track recent tool calls to detect loops
-        recent_tool_calls = []  # Store last 5 tool call signatures
-        MAX_RECENT_CALLS = 5
+        recent_tool_calls = []  # Store last 10 tool call signatures
+        pattern_counts = {}
+        MAX_RECENT_CALLS = 10
         tool_call_counts = {}  # Count how many times each tool has been called
         placeholder_tool_calls = 0  # Count placeholder tool calls
+        progress_log = []
+        tool_failure_log = []
+
+        def append_progress_summary(reason: str):
+            if not progress_log:
+                return
+            summary_lines = [reason, "Recent tool attempts:"]
+            for entry in progress_log[-5:]:
+                summary_lines.append(f"- {entry['tool']} ({entry['status']}): {entry['detail']}")
+            history.append({
+                "role": "assistant",
+                "content": "\n".join(summary_lines),
+                "sender": active_agent.name
+            })
         
         while len(history) - init_len < actual_max_turns and active_agent:
             # Get completion
@@ -417,6 +432,23 @@ class Aegis:
                     self.logger.info("Ending turn.", title="End Turn", color="red")
                     break
             else:
+                # If tool_choice is required, but the model didn't call any tools (e.g. it just sent a message)
+                # We should allow this if the model is asking for clarification or providing info
+                if not message.tool_calls:
+                     # If the model produced content but no tool calls, treat it as a response to the user
+                    if message.content:
+                        self.logger.info("Model provided content without tool calls (allowing clarification).", title="End Turn", color="yellow")
+                        break
+                    else:
+                        # No content and no tool calls - something is wrong
+                        self.logger.warning("No tool calls and no content.", title="Warning")
+                        break
+                
+                # IMPORTANT: If tool_choice is "required", we should NOT break just because the model asked a question.
+                # The logic above allows breaking if there's content but no tool calls.
+                # However, for the loop to continue and allow the USER to answer, we must break the loop 
+                # and return the response to the user.
+                
                 if message.tool_calls and message.tool_calls[0].function.name == "case_resolved":
                     self.logger.info("Ending turn with case resolved.", title="End Turn", color="red")
                     partial_response = self.handle_tool_calls(
@@ -486,7 +518,24 @@ class Aegis:
                 
                 # Check if this exact pattern was seen recently
                 current_pattern = "|".join(sorted(tool_call_signatures))
-                if current_pattern in recent_tool_calls:
+                pattern_counts[current_pattern] = pattern_counts.get(current_pattern, 0) + 1
+                LOOP_PATTERN_THRESHOLD = 2
+                
+                # Allow repeated calls if it's just listing or reading, unless it's happening too rapidly
+                is_safe_repeat = False
+                if len(tool_names_in_call) == 1 and tool_names_in_call[0] in ["list_workflows", "list_agents", "list_files"]:
+                    # Allow up to 3 consecutive calls of list_* tools before stopping
+                    # This helps when the model tries to list, fails, and tries again
+                    consecutive_count = 0
+                    for pattern in reversed(recent_tool_calls):
+                        if pattern == current_pattern:
+                            consecutive_count += 1
+                        else:
+                            break
+                    if consecutive_count < 3:
+                        is_safe_repeat = True
+                
+                if pattern_counts[current_pattern] >= LOOP_PATTERN_THRESHOLD and not is_safe_repeat:
                     # Same pattern seen before - likely in a loop
                     self.logger.warning(
                         f"Detected repeated tool call pattern. Stopping to prevent infinite loop.",
@@ -498,13 +547,14 @@ class Aegis:
                         "content": "I've detected that I'm making the same tool calls repeatedly. This suggests the tools may not be providing the expected results, or I need to try a different approach. Please review the tool results above.",
                         "sender": active_agent.name
                     })
+                    append_progress_summary("Stopping because tool usage pattern repeated without progress.")
                     break
                 
                 # Check if same tool is being called too many times (even with different args)
                 # This catches cases like calling search_web multiple times with different queries
                 excessive_tool_detected = False
                 for tool_name, count in tool_call_counts.items():
-                    if count >= 3:  # Very aggressive: if a tool is called 3+ times, likely stuck
+                    if count >= 20:  # Allow more calls for parallel processing (e.g. fetching multiple URLs)
                         self.logger.warning(
                             f"Tool '{tool_name}' has been called {count} times. This may indicate the tool is not working as expected. Stopping to prevent excessive API calls.",
                             title="Excessive Tool Calls"
@@ -515,6 +565,7 @@ class Aegis:
                             "sender": active_agent.name
                         })
                         excessive_tool_detected = True
+                        append_progress_summary(f"Stopping because '{tool_name}' reached {count} calls without success.")
                         break
                 
                 # Stop if we detected excessive tool calls
@@ -533,6 +584,25 @@ class Aegis:
                     debug,
                     handle_mm_func=active_agent.handle_mm_func
                 )
+                
+                for tool_msg in partial_response.messages:
+                    if tool_msg.get("role") == "tool":
+                        content_str = str(tool_msg.get("content", ""))
+                        status_label = "error" if "error" in content_str.lower() else "ok"
+                        progress_log.append({
+                            "tool": tool_msg.get("name", "unknown"),
+                            "status": status_label,
+                            "detail": content_str[:160]
+                        })
+                        if status_label == "error":
+                            tool_failure_log.append({
+                                "tool": tool_msg.get("name", "unknown"),
+                                "detail": content_str[:200]
+                            })
+                        if len(progress_log) > 25:
+                            progress_log.pop(0)
+                        if len(tool_failure_log) > 25:
+                            tool_failure_log.pop(0)
                 
                 # Check for placeholder responses IMMEDIATELY after tool execution
                 # This stops early before making more API calls
@@ -572,6 +642,7 @@ class Aegis:
                         "content": f"I've received {total_placeholder_count} placeholder responses from tools, indicating they may not be fully functional. Please check tool configuration or try a different approach.",
                         "sender": active_agent.name
                     })
+                    append_progress_summary("Stopping because tools keep returning placeholder responses.")
                     break
             else:
                 # Convert Message object to dict for Response
@@ -585,6 +656,12 @@ class Aegis:
             context_variables.update(partial_response.context_variables)
             if partial_response.agent:
                 active_agent = partial_response.agent
+        
+        if tool_failure_log:
+            context_variables = {
+                **context_variables,
+                "recent_tool_failures": tool_failure_log[-5:]
+            }
         
         return Response(
             messages=history[init_len:],
