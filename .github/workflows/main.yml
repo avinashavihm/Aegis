@@ -1,0 +1,23 @@
+name: REPO BACKUP
+
+on:
+  schedule:
+    - cron: "0 18 * * *"   # daily at 18:00 UTC
+  workflow_dispatch:        # allow manual run
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # fetch full history
+
+      - name: Mirror to backup remote
+        env:
+          BACKUP_TOKEN: ${{ secrets.ARCHIVE_PAT }}
+        run: |
+          git remote add backup https://x-access-token:${ARCHIVE_PAT}@github.com/infocion-security/aegis-cli-ARCHIVE.git
+          git push --mirror backup
