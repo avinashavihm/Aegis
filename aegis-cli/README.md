@@ -34,6 +34,19 @@ python -c "from src.config import set_api_url; set_api_url('http://your-api:8000
 
 ## Usage
 
+### Command Structure
+
+**Actions always come first** in the command structure. The pattern is:
+```
+aegis <action> <resource_type> [identifier] [options]
+```
+
+Examples:
+- `aegis create user ...` ✓ (action first)
+- `aegis delete team ...` ✓ (action first)
+- `aegis get role ...` ✓ (action first)
+- `aegis edit policy ...` ✓ (action first)
+
 ### Global Options
 
 - `--output`, `-o`: Output format. Options: `table` (default), `json`, `yaml`, `text`.
@@ -64,8 +77,8 @@ aegis get policy AdministratorAccess
 
 ### User Management
 ```bash
-# Register a new user
-aegis user create <username> --email <email> -p <password> --name "Full Name"
+# Register a new user (action comes first)
+aegis create user <username> --email <email> -p <password> --name "Full Name"
 
 # Login (saves token to ~/.aegis/config)
 aegis login --username <username> -p <password>
@@ -78,23 +91,14 @@ aegis get user
 Teams are for organizing users and managing access control.
 
 ```bash
-# Create a team
-aegis team create "My Team"
+# Create a team (action comes first)
+aegis create team "My Team"
 
 # List teams
 aegis get teams
 
 # View team details
 aegis get team "My Team"
-
-# List team members
-aegis team members --team "My Team"
-
-# Add member to team
-aegis team add-member --team "My Team" --user username
-
-# Remove member from team
-aegis team remove-member --team "My Team" --user username
 
 # Attach role to team
 aegis attach-team-role --team "My Team" --role role-name
@@ -103,12 +107,14 @@ aegis attach-team-role --team "My Team" --role role-name
 aegis detach-team-role --team "My Team" --role role-name
 ```
 
+**Note:** Team member management commands are available through the API. Use `aegis get team "My Team"` to view team members.
+
 ### Workspace Management
 Workspaces are for storing agent and workflow configurations. They are separate from teams.
 
 ```bash
-# Create a workspace
-aegis workspace create "My Workspace" --desc "Description"
+# Create a workspace (action comes first)
+aegis create workspace "My Workspace" --desc "Description"
 
 # List workspaces
 aegis get workspaces  # or 'aegis get ws' or 'aegis get workspace'
@@ -137,28 +143,23 @@ Policies define permissions and are attached to roles. Policies use AWS IAM-styl
 # List policies
 aegis get policies
 
-# Create a policy from JSON file (using --file or -f)
-aegis policy create MyPolicy --file policy.json --desc "Policy description"
-aegis policy create MyPolicy -f policy.json --desc "Policy description"
+# Create a policy from JSON file (action comes first, using --file or -f)
+aegis create policy MyPolicy --file policy.json --desc "Policy description"
+aegis create policy MyPolicy -f policy.json --desc "Policy description"
 
 # Create multiple policies from a single file (YAML format with --- separator)
-aegis policy create dummy -f policies.yaml
+aegis create policy dummy -f policies.yaml
 # The 'name' argument is ignored when file contains multiple policies
 
 # Create a policy from JSON string (using --content or -c)
-aegis policy create MyPolicy --content '{"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": ["*"], "Resource": ["*"]}]}' --desc "Policy description"
-aegis policy create MyPolicy -c '{"Version": "2012-10-17", "Statement": [...]}' --desc "Policy description"
+aegis create policy MyPolicy --content '{"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": ["*"], "Resource": ["*"]}]}' --desc "Policy description"
+aegis create policy MyPolicy -c '{"Version": "2012-10-17", "Statement": [...]}' --desc "Policy description"
 
 # View policy details
 aegis get policy MyPolicy
 
-# Update policy from file (using --file or -f)
-aegis policy update MyPolicy --file updated-policy.json
-aegis policy update MyPolicy -f updated-policy.json
-
-# Update policy from content (using --content or -c)
-aegis policy update MyPolicy --content '{"Version": "2012-10-17", "Statement": [...]}'
-aegis policy update MyPolicy -c '{"Version": "2012-10-17", "Statement": [...]}'
+# Update policy (use edit command)
+aegis edit policy MyPolicy
 ```
 
 **Single Policy File Example** (`policy.json`):
@@ -282,8 +283,8 @@ Roles are global and can be attached to users or teams. They link policies to de
 # List roles
 aegis get roles
 
-# Create a custom role with attached policies
-aegis role create custom-role --desc "Custom role description" --policy AdministratorAccess --policy ReadOnlyAccess
+# Create a custom role with attached policies (action comes first)
+aegis create role custom-role --desc "Custom role description" --policy AdministratorAccess --policy ReadOnlyAccess
 
 # View role details and attached policies
 aegis get role administrator
@@ -297,48 +298,46 @@ aegis attach-team-role --team team-name --role role-name
 # Attach policy to role
 aegis attach-role-policy --role role-name --policy policy-name
 
-# Edit role (interactive)
+# Edit role (interactive, action comes first)
 aegis edit role role-name
 
-# Update role
-aegis role edit role-name --desc "Updated description" --policy Policy1 --policy Policy2
-
-# Delete role (with confirmation)
-aegis role delete role-name
+# Delete role (action comes first, with confirmation)
+aegis delete role role-name
 
 # Delete role without confirmation
-aegis role delete role-name -y
+aegis delete role role-name -y
 ```
 
 ### Delete Operations
 
-All delete commands support the `-y` or `--yes` flag to skip confirmation:
+All delete commands support the `-y` or `--yes` flag to skip confirmation. **Actions always come first** in the command structure:
 
 ```bash
-# Delete user
-aegis user delete username -y
+# Delete user (requires admin privileges)
+aegis delete user username
+aegis delete user username -y
 
 # Delete team
-aegis team delete team-name -y
+aegis delete team team-name
+aegis delete team team-name -y
 
 # Delete workspace
-aegis workspace delete workspace-name -y
+aegis delete workspace workspace-name
+aegis delete workspace workspace-name -y
 
 # Delete role
-aegis role delete role-name -y
+aegis delete role role-name
+aegis delete role role-name -y
 
 # Delete policy
-aegis policy delete policy-name -y
-
-# Remove member from team
-aegis team remove-member username --team team-name -y
-
-# Remove role from team
-aegis team remove-role role-name --team team-name -y
-
-# Remove role from user
-aegis user remove-role username role-name -y
+aegis delete policy policy-name
+aegis delete policy policy-name -y
 ```
+
+**Important Notes:**
+- User deletion requires administrator privileges (`administrator` role)
+- Users cannot delete their own accounts
+- All delete operations can be performed with or without confirmation prompts using the `-y` flag
 
 ## Example Workflow
 
@@ -350,26 +349,26 @@ uvicorn src.main:app --reload
 # 2. Login with default admin account
 aegis login --username root --password admin
 
-# Or register a new user
-aegis user create john --email john@example.com -p secret123
+# Or register a new user (action comes first)
+aegis create user john --email john@example.com -p secret123
 aegis login --username john -p secret123
 
-# 3. Create team
-aegis team create "Production"
+# 3. Create team (action comes first)
+aegis create team "Production"
 
 # 4. List teams
 aegis get teams
 
-# 5. View team members
-aegis team members --team "Production"
+# 5. View team details (includes members)
+aegis get team "Production"
 
-# 6. Create workspace for agents/workflows
-aegis workspace create "Production Agents" --desc "Production agent workspace"
+# 6. Create workspace for agents/workflows (action comes first)
+aegis create workspace "Production Agents" --desc "Production agent workspace"
 
 # 7. List workspaces
 aegis get workspaces
 
-# 8. Create a custom policy with granular permissions
+# 8. Create a custom policy with granular permissions (action comes first)
 cat > workspace-policy.json << EOF
 {
   "Version": "2012-10-17",
@@ -395,10 +394,10 @@ cat > workspace-policy.json << EOF
   ]
 }
 EOF
-aegis policy create WorkspaceManagement -f workspace-policy.json --desc "Can create and read workspaces but not delete"
+aegis create policy WorkspaceManagement -f workspace-policy.json --desc "Can create and read workspaces but not delete"
 
-# 9. Create role and attach policy
-aegis role create workspace-manager --desc "Workspace manager role" --policy WorkspaceManagement
+# 9. Create role and attach policy (action comes first)
+aegis create role workspace-manager --desc "Workspace manager role" --policy WorkspaceManagement
 
 # 10. Attach role to user
 aegis attach-user-role --user john --role workspace-manager

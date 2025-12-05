@@ -117,6 +117,7 @@ Base URL: `http://localhost:8000`
 - `GET /users` - List users
 - `GET /users/{id}` - Get user (includes teams & roles)
 - `PUT /users/{id}` - Update user
+- `DELETE /users/{id}` - Delete user (admin only)
 
 ### Teams
 - `POST /teams` - Create team
@@ -284,23 +285,25 @@ On first deployment, a default admin account is created:
 
 ## Delete Commands
 
-All delete commands support the `-y` or `--yes` flag to skip confirmation prompts:
+All delete commands support the `-y` or `--yes` flag to skip confirmation prompts. **Actions always come first** in the command structure:
 
 ```bash
-# Delete with confirmation
-aegis user delete username
-aegis team delete team-name
-aegis workspace delete workspace-name
-aegis role delete role-name
-aegis policy delete policy-name
+# Delete with confirmation (action comes first)
+aegis delete user username
+aegis delete team team-name
+aegis delete workspace workspace-name
+aegis delete role role-name
+aegis delete policy policy-name
 
 # Delete without confirmation (quiet mode)
-aegis user delete username -y
-aegis team delete team-name -y
-aegis workspace delete workspace-name -y
-aegis role delete role-name -y
-aegis policy delete policy-name -y
+aegis delete user username -y
+aegis delete team team-name -y
+aegis delete workspace workspace-name -y
+aegis delete role role-name -y
+aegis delete policy policy-name -y
 ```
+
+**Note:** User deletion requires administrator privileges. Users cannot delete their own accounts.
 
 ## Troubleshooting
 

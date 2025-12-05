@@ -114,7 +114,7 @@ async def update_user(
                 """SELECT EXISTS (
                     SELECT 1 FROM user_roles ur
                     JOIN roles r ON ur.role_id = r.id
-                    WHERE ur.user_id = %s AND r.name = 'admin'
+                    WHERE ur.user_id = %s AND r.name = 'administrator'
                 )""",
                 (str(current_user_id),)
             )
@@ -143,42 +143,108 @@ async def update_user(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="You can only update your own profile"
                 )
-    
-    update_fields = []
-    values = []
-    
-    email = user_update.get("email")
-    full_name = user_update.get("full_name")
-    password = user_update.get("password")
-    
-    if email:
-        update_fields.append("email = %s")
-        values.append(email)
-    if full_name is not None:
-        update_fields.append("full_name = %s")
-        values.append(full_name)
-    if password:
-        from src.auth import hash_password
-        update_fields.append("password_hash = %s")
-        values.append(hash_password(password))
-    
-        if not update_fields:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No fields to update"
-            )
-    
-        values.append(str(target_user_id))
-    
-        cur.execute(
-            f"""UPDATE users SET {', '.join(update_fields)} 
-               WHERE id = %s 
-               RETURNING id, username, email, full_name, created_at""",
-            values
-        )
-        updated_user = cur.fetchone()
             
-    return dict(updated_user)
+            update_fields = []
+            values = []
+            
+            email = user_update.get("email")
+            full_name = user_update.get("full_name")
+            password = user_update.get("password")
+            
+            if email:
+                update_fields.append("email = %s")
+                values.append(email)
+            if full_name is not None:
+                update_fields.append("full_name = %s")
+                values.append(full_name)
+            if password:
+                from src.auth import hash_password
+                update_fields.append("password_hash = %s")
+                values.append(hash_password(password))
+            
+            if not update_fields:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No fields to update"
+                )
+            
+            values.append(str(target_user_id))
+            
+            cur.execute(
+                f"""UPDATE users SET {', '.join(update_fields)} 
+                   WHERE id = %s 
+                   RETURNING id, username, email, full_name, created_at""",
+                values
+            )
+            updated_user = cur.fetchone()
+            conn.commit()
+                
+        return dict(updated_user)
+
+
+@router.delete("/{user_identifier}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
+    user_identifier: str,
+    current_user_id: UUID = Depends(get_current_user_id)
+):
+    """Delete a user by ID or username."""
+    with get_db_connection(str(current_user_id)) as conn:
+        with conn.cursor() as cur:
+            # Check if current user is admin
+            cur.execute(
+                """SELECT EXISTS (
+                    SELECT 1 FROM user_roles ur
+                    JOIN roles r ON ur.role_id = r.id
+                    WHERE ur.user_id = %s AND r.name = 'administrator'
+                )""",
+                (str(current_user_id),)
+            )
+            is_admin = cur.fetchone()['exists']
+            
+            if not is_admin:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only administrators can delete users"
+                )
+            
+            # Resolve user_identifier to actual user_id
+            try:
+                target_user_id = UUID(user_identifier)
+                cur.execute("SELECT id, username FROM users WHERE id = %s", (str(target_user_id),))
+            except ValueError:
+                # Not a UUID, search by username
+                cur.execute("SELECT id, username FROM users WHERE username = %s", (user_identifier,))
+            
+            user_row = cur.fetchone()
+            if not user_row:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found"
+                )
+            
+            target_user_id = user_row['id']
+            target_username = user_row['username']
+            
+            # Prevent deleting yourself
+            if str(target_user_id) == str(current_user_id):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="You cannot delete your own account"
+                )
+            
+            # Delete the user (CASCADE will handle related records)
+            cur.execute(
+                "DELETE FROM users WHERE id = %s RETURNING id",
+                (str(target_user_id),)
+            )
+            deleted = cur.fetchone()
+            conn.commit()
+            
+            if not deleted:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found or access denied"
+                )
 
 
 @router.post("/{user_identifier}/roles/{role_identifier}")
