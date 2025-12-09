@@ -1,9 +1,12 @@
 FROM python:3.11-slim
 
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
 WORKDIR /app
 
 # Install uv
-RUN pip install uv
+RUN pip install --no-cache-dir uv
 
 # Copy project files
 COPY pyproject.toml ./

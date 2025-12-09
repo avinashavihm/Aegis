@@ -40,4 +40,7 @@ Thumbs.db
 # Aegis specific
 .aegis/
 *.log
-
+.env
+.pgpass_init
+.pgpass
+._*

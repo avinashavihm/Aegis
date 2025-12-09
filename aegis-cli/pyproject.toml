@@ -1,17 +1,23 @@
 [project]
 name = "aegis-cli"
-version = "0.1.0"
-description = "CLI tool for Agentic Ops"
+version = "0.2.0"
+description = "Aegis CLI - Agentic Ops Platform CLI Tool"
 authors = [
     {name = "User", email = "user@example.com"},
 ]
 dependencies = [
-    "typer[all]",
-    "rich",
-    "httpx",
-    "pyyaml"
+    "typer[all]>=0.9.0",
+    "rich>=13.0.0",
+    "httpx>=0.24.0",
+    "pyyaml>=6.0"
 ]
 requires-python = ">=3.9"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0"
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -22,3 +28,9 @@ packages = ["src"]
 
 [project.scripts]
 aegis = "src.main:app"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"

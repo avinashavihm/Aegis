@@ -26,6 +26,7 @@ Complete platform for managing users, teams, and RBAC using PostgreSQL Row Level
 ## Components
 
 ### 1. **PostgreSQL Database** (`init.sql`)
+
 - User management with secure password hashing
 - Team management with ownership (formerly Workspaces)
 - Team members with roles (Owner, Admin, Member, Viewer)
@@ -34,6 +35,7 @@ Complete platform for managing users, teams, and RBAC using PostgreSQL Row Level
 - UUID-based primary keys
 
 ### 2. **Aegis Service** (`aegis-service/`)
+
 - **FastAPI** REST API
 - JWT authentication
 - No Pydantic models (traditional dict-based)
@@ -41,6 +43,7 @@ Complete platform for managing users, teams, and RBAC using PostgreSQL Row Level
 - RBAC enforced via PostgreSQL RLS
 
 ### 3. **Aegis CLI** (`aegis-cli/`)
+
 - **Typer** command-line interface
 - **Rich** terminal UI
 - Unified `get` command structure
@@ -52,47 +55,52 @@ Complete platform for managing users, teams, and RBAC using PostgreSQL Row Level
 
 ```bash
 # Start PostgreSQL + Aegis Service
-nerdctl compose up -d
+docker compose up -d
 
 # Check status
-nerdctl compose ps
+docker compose ps
 ```
 
 ### 2. Install and Use CLI
 
 ```bash
+
 cd aegis-cli
 uv venv
 source .venv/bin/activate
 uv pip install -e .
 
+# Point CLI to the local API
+export AEGIS_API_URL=http://localhost:8000
+
 # Login with default admin account
 aegis login --username root --password admin
 
-# Or register a new user
-aegis user create yaswanth --email yaswanth@example.com -p secret123
-aegis login --username yaswanth -p secret123
+# Create a demo agent (prints the agent UUID)
+aegis agent create research-agent \
+  --desc "research agent that can web scrap and do detailed research on any topic" \
+  --tools web_search
 
-# Create team
-aegis team create "Production"
+# Run the agent (use the printed UUID)
+aegis agent run <agent-uuid> "Hello from CLI" -w
 
-# List everything
-aegis get users
-aegis get teams
-aegis get roles
-aegis get policies
+# Fetch the UUID later if needed
+aegis agent get research-agent --output json
+
+# Optional clean-up
+aegis agent delete research-agent -y
 ```
 
 ## Environment Variables
 
-Create `.env` file in project root:
+Create a `.env` file in the repo root (used by `docker compose` and local runs):
 
 ```env
 # Database
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=agentic_ops
-DB_USER=admin
+DB_USER=aegis_app
 DB_PASSWORD=password123
 
 # JWT (aegis-service)
@@ -100,8 +108,11 @@ SECRET_KEY=your-random-secret-key-here
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
-# CORS
+# CORS (comma-separated)
 CORS_ORIGINS=http://localhost:3000,http://localhost:8080
+
+# CLI (optional override)
+AEGIS_API_URL=http://localhost:8000
 ```
 
 ## API Endpoints
@@ -109,17 +120,20 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:8080
 Base URL: `http://localhost:8000`
 
 ### Authentication
+
 - `POST /auth/register` - Register user
 - `POST /auth/login` - Login (get JWT)
 - `GET /auth/me` - Current user
 
 ### Users
+
 - `GET /users` - List users
 - `GET /users/{id}` - Get user (includes teams & roles)
 - `PUT /users/{id}` - Update user
 - `DELETE /users/{id}` - Delete user (admin only)
 
 ### Teams
+
 - `POST /teams` - Create team
 - `GET /teams` - List teams
 - `GET /teams/{id}` - Get team
@@ -127,6 +141,7 @@ Base URL: `http://localhost:8000`
 - `DELETE /teams/{id}` - Delete team
 
 ### Workspaces
+
 - `POST /workspaces` - Create workspace
 - `GET /workspaces` - List workspaces
 - `GET /workspaces/{id}` - Get workspace
@@ -134,11 +149,13 @@ Base URL: `http://localhost:8000`
 - `DELETE /workspaces/{id}` - Delete workspace
 
 ### Members
+
 - `GET /teams/{id}/members` - List members
 - `POST /teams/{id}/members` - Add member
 - `DELETE /teams/{id}/members/{user_id}` - Remove member
 
 ### Policies & Roles
+
 - `GET /policies` - List policies
 - `POST /policies` - Create policy
 - `PUT /policies/{id}` - Update policy
@@ -152,23 +169,25 @@ Base URL: `http://localhost:8000`
 
 Roles are global collections of policies that define permissions. Roles can be attached to users or teams.
 
-| Role | Permissions |
-|------|-------------|
-| **administrator** | Full administrative access to all resources |
-| **team-manager** | Full access to manage teams and team members |
-| **read-only-viewer** | Read-only access to all resources |
-| **deployment-manager** | Full access to manage deployments and view teams |
-| **workspace-manager** | Full access to manage workspaces (agents & workflows) |
-| **user-manager** | Full access to manage users |
-| **role-viewer** | Read-only access to view roles and policies |
+| Role                         | Permissions                                           |
+| ---------------------------- | ----------------------------------------------------- |
+| **administrator**      | Full administrative access to all resources           |
+| **team-manager**       | Full access to manage teams and team members          |
+| **read-only-viewer**   | Read-only access to all resources                     |
+| **deployment-manager** | Full access to manage deployments and view teams      |
+| **workspace-manager**  | Full access to manage workspaces (agents & workflows) |
+| **user-manager**       | Full access to manage users                           |
+| **role-viewer**        | Read-only access to view roles and policies           |
 
 **Key Points:**
+
 - All roles are **global** (not team-scoped)
 - Roles can be attached to **users** directly or to **teams** (inherited by team members)
 - Policies use AWS IAM-style format with `Allow` and `Deny` effects
 - `Deny` statements take priority over `Allow` statements
 
 **Available Actions:**
+
 - `create` - Create new resources
 - `modify` - Update existing resources
 - `get` - Retrieve a specific resource (includes full definitions/configurations)
@@ -191,6 +210,7 @@ The `read`, `get`, and `list` actions allow users to read resource definitions a
 Actions follow the format: `resource_type:action` (e.g., `workspace:create`, `team:modify`, `user:delete`)
 
 **Example Policy:**
+
 ```json
 {
   "Version": "2012-10-17",
@@ -268,16 +288,17 @@ Aegis/
 
 ## Security Features
 
-✅ **Password Hashing** (bcrypt)  
-✅ **JWT Authentication**  
-✅ **Row Level Security (RLS)** - Database-enforced RBAC  
-✅ **UUID Primary Keys** - Prevents enumeration  
-✅ **CORS Protection**  
+✅ **Password Hashing** (bcrypt)
+✅ **JWT Authentication**
+✅ **Row Level Security (RLS)** - Database-enforced RBAC
+✅ **UUID Primary Keys** - Prevents enumeration
+✅ **CORS Protection**
 ✅ **Environment-based Secrets**
 
 ## Default Credentials
 
 On first deployment, a default admin account is created:
+
 - **Username:** `root`
 - **Password:** `admin`
 
@@ -308,6 +329,7 @@ aegis delete policy policy-name -y
 ## Troubleshooting
 
 **CLI can't connect to API:**
+
 ```bash
 # Check if service is running
 nerdctl compose ps
@@ -317,10 +339,12 @@ cat ~/.aegis/config
 ```
 
 **Permission denied errors:**
+
 - Check if you're logged in: `aegis get user`
 - Verify your role: `aegis get roles`
 
 **Database connection failed:**
+
 ```bash
 # Check PostgreSQL logs
 nerdctl compose logs postgres
@@ -330,6 +354,7 @@ nerdctl compose restart
 ```
 
 **Error messages:**
+
 - All error messages now display as clear text instead of generic "Internal Server Error"
 - Database connection errors show helpful messages
 - RLS policy violations show specific error details

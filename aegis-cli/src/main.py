@@ -3,15 +3,47 @@ from typing import Optional
 from src.commands.user import login
 from src.utils import OutputFormat, set_output_format
 
+# Import command modules for subcommands
+from src.commands import agent as agent_commands
+from src.commands import workflow as workflow_commands
+from src.commands import run as run_commands
+from src.commands import tool as tool_commands
+
+__version__ = "0.2.0"
+
 app = typer.Typer(
     name="aegis",
-    help="Agentic Ops CLI Tool",
+    help="Aegis CLI - Agentic Ops Platform\n\nManage agents, workflows, tools, and runs with precision.",
     add_completion=False,
     no_args_is_help=True
 )
 
+
+def version_callback(value: bool):
+    if value:
+        typer.echo(f"Aegis CLI version {__version__}")
+        raise typer.Exit()
+
+# Add command groups
+app.add_typer(agent_commands.app, name="agent", help="Manage agents (list, create, run, etc.)")
+app.add_typer(workflow_commands.app, name="workflow", help="Manage workflows (list, create, run, etc.)")
+app.add_typer(run_commands.app, name="run", help="Manage runs (list, get, cancel, stats)")
+app.add_typer(tool_commands.app, name="tool", help="Manage tools (list, show, custom tools)")
+
+# Add plural aliases for convenience
+app.add_typer(agent_commands.app, name="agents", hidden=True)
+app.add_typer(workflow_commands.app, name="workflows", hidden=True)
+app.add_typer(run_commands.app, name="runs", hidden=True)
+app.add_typer(tool_commands.app, name="tools", hidden=True)
+
 @app.callback()
 def main(
+    version: bool = typer.Option(
+        None, "--version", "-v",
+        callback=version_callback,
+        is_eager=True,
+        help="Show version and exit"
+    ),
     output: Optional[str] = typer.Option(
         None,
         "--output",
@@ -21,6 +53,21 @@ def main(
 ):
     """
     Aegis CLI - Agentic Ops Platform
+    
+    Manage agents, workflows, tools, runs, and access control.
+    
+    Commands:
+      agent     - Manage AI agents
+      workflow  - Manage multi-step workflows  
+      run       - View and manage execution runs
+      tool      - Browse and manage tools
+      
+    Quick shortcuts:
+      run-agent    - Execute an agent
+      run-workflow - Execute a workflow
+      stats        - Show run statistics
+      watch        - Watch a run in real-time
+      logs         - View run logs
     """
     if output is None:
         from src.config import get_default_output_format
@@ -44,33 +91,57 @@ def normalize_resource_type(resource_type: str) -> str:
     """Normalize resource type aliases to standard names."""
     resource_type = resource_type.lower()
     alias_map = {
+        # Workspaces
         "ws": "workspace",
         "wss": "workspaces",
         "workspace": "workspace",
         "workspaces": "workspaces",
+        # Users
         "user": "user",
         "users": "users",
+        # Teams
         "team": "team",
         "teams": "teams",
+        # Roles
         "role": "role",
         "roles": "roles",
+        # Policies
         "policy": "policy",
         "policies": "policies",
+        # Agents
+        "agent": "agent",
+        "agents": "agents",
+        # Workflows
+        "workflow": "workflow",
+        "workflows": "workflows",
+        "wf": "workflow",
+        "wfs": "workflows",
+        # Runs
+        "run": "run",
+        "runs": "runs",
+        # Tools
+        "tool": "tool",
+        "tools": "tools",
     }
     return alias_map.get(resource_type, resource_type)
 
 
 @app.command()
 def create(
-    resource_type: str = typer.Argument(..., help="Resource type (user, team, role, policy, workspace/ws)"),
+    resource_type: str = typer.Argument(..., help="Resource type (user, team, role, policy, workspace/ws, agent, workflow)"),
     name: str = typer.Argument(..., help="Resource name/identifier"),
     description: Optional[str] = typer.Option(None, "--desc", "-d", help="Description"),
     email: Optional[str] = typer.Option(None, "--email", help="Email (for user)"),
     password: Optional[str] = typer.Option(None, "--password", "-p", help="Password (for user)"),
     full_name: Optional[str] = typer.Option(None, "--name", help="Full name (for user)"),
     policy: Optional[str] = typer.Option(None, "--policy", help="Policy ID/name (for role)"),
-    file: Optional[str] = typer.Option(None, "--file", "-f", help="File path (for policy)"),
-    content: Optional[str] = typer.Option(None, "--content", "-c", help="Content JSON string (for policy)")
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="File path (for policy/workflow steps)"),
+    content: Optional[str] = typer.Option(None, "--content", "-c", help="Content JSON string (for policy)"),
+    model: Optional[str] = typer.Option(None, "--model", "-m", help="Model (for agent)"),
+    instructions: Optional[str] = typer.Option(None, "--instructions", "-i", help="Instructions (for agent)"),
+    tools: Optional[str] = typer.Option(None, "--tools", "-t", help="Comma-separated tools (for agent)"),
+    mode: Optional[str] = typer.Option(None, "--mode", help="Execution mode (for workflow)"),
+    status: Optional[str] = typer.Option("active", "--status", "-s", help="Status (active, inactive, draft)")
 ):
     """Create a new resource."""
     resource_type = normalize_resource_type(resource_type)
@@ -94,15 +165,34 @@ def create(
     elif resource_type == "workspace":
         from src.commands.workspace import create as create_workspace
         create_workspace(name, description=description)
+    elif resource_type == "agent":
+        from src.commands.agent import create as create_agent
+        create_agent(
+            name=name,
+            model=model or "gpt-4o",
+            description=description,
+            instructions=instructions,
+            tools=tools,
+            status=status
+        )
+    elif resource_type == "workflow":
+        from src.commands.workflow import create as create_workflow
+        create_workflow(
+            name=name,
+            description=description,
+            execution_mode=mode or "sequential",
+            steps_file=file,
+            status=status
+        )
     else:
         typer.echo(f"[red]Error:[/red] Unknown resource type: {resource_type}")
-        typer.echo("Valid types: user, team, role, policy, workspace/ws")
+        typer.echo("Valid types: user, team, role, policy, workspace/ws, agent, workflow")
         raise typer.Exit(1)
 
 
 @app.command()
 def delete(
-    resource_type: str = typer.Argument(..., help="Resource type (user, team, role, policy, workspace/ws)"),
+    resource_type: str = typer.Argument(..., help="Resource type (user, team, role, policy, workspace/ws, agent, workflow, run)"),
     identifier: str = typer.Argument(..., help="Resource identifier (name or ID)"),
     yes: bool = typer.Option(False, "-y", "--yes", help="Skip confirmation prompt")
 ):
@@ -124,9 +214,18 @@ def delete(
     elif resource_type == "workspace":
         from src.commands.workspace import delete as delete_workspace
         delete_workspace(identifier, yes=yes)
+    elif resource_type == "agent":
+        from src.commands.agent import delete as delete_agent
+        delete_agent(identifier, yes=yes)
+    elif resource_type == "workflow":
+        from src.commands.workflow import delete as delete_workflow
+        delete_workflow(identifier, yes=yes)
+    elif resource_type == "run":
+        from src.commands.run import delete as delete_run
+        delete_run(identifier, yes=yes)
     else:
         typer.echo(f"[red]Error:[/red] Unknown resource type: {resource_type}")
-        typer.echo("Valid types: user, team, role, policy, workspace/ws")
+        typer.echo("Valid types: user, team, role, policy, workspace/ws, agent, workflow, run")
         raise typer.Exit(1)
 
 
@@ -320,7 +419,7 @@ def detach_team_role(
 
 @app.command()
 def edit(
-    resource_type: str = typer.Argument(..., help="Resource type (role/roles, policy/policies, team/teams, user/users, workspace/ws)"),
+    resource_type: str = typer.Argument(..., help="Resource type (role/roles, policy/policies, team/teams, user/users, workspace/ws, agent/agents, workflow/wf)"),
     identifier: Optional[str] = typer.Argument(None, help="Resource identifier (name or ID) - omit to edit all")
 ):
     """Edit resource(s) in your default editor (like kubectl edit)."""
@@ -343,7 +442,9 @@ def edit(
         "policy": "/policies",
         "team": "/teams",
         "user": "/users",
-        "workspace": "/workspaces"
+        "workspace": "/workspaces",
+        "agent": "/agents",
+        "workflow": "/workflows"
     }
     
     plural_map = {
@@ -351,7 +452,9 @@ def edit(
         "policies": "/policies",
         "teams": "/teams",
         "users": "/users",
-        "workspaces": "/workspaces"
+        "workspaces": "/workspaces",
+        "agents": "/agents",
+        "workflows": "/workflows"
     }
     
     is_plural = resource_type in plural_map
@@ -426,7 +529,7 @@ def edit(
     endpoint = singular_map.get(resource_type, plural_map.get(resource_type))
     if not endpoint:
         console.print(f"[red]Error:[/red] Unknown resource type: {resource_type}")
-        console.print("Valid types: role/roles, policy/policies, team/teams, user/users, workspace/ws")
+        console.print("Valid types: role/roles, policy/policies, team/teams, user/users, workspace/ws, agent/agents, workflow/wf")
         return
     
     try:
@@ -494,7 +597,7 @@ def edit(
 
 @app.command()
 def get(
-    resource_type: str = typer.Argument(..., help="Resource type (role/roles, team/teams, user/users, policy/policies, workspace/ws)"),
+    resource_type: str = typer.Argument(..., help="Resource type (role/roles, team/teams, user/users, policy/policies, workspace/ws, agent/agents, workflow/wf, run/runs, tool/tools)"),
     identifier: Optional[str] = typer.Argument(None, help="Resource identifier (name or ID) - omit to list all"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Output format: json, yaml, wide")
 ):
@@ -521,7 +624,6 @@ def get(
     # Handle plural forms for listing
     if resource_type == "roles":
         if identifier:
-            # If identifier provided with plural form, show single resource
             from src.commands.role import show_role
             show_role(identifier, output_format)
         else:
@@ -529,7 +631,6 @@ def get(
             list_roles(output=output_format)
     elif resource_type == "role":
         if not identifier:
-            # Default to listing all roles
             from src.commands.role import list_roles
             list_roles(output=output_format)
         else:
@@ -537,7 +638,6 @@ def get(
             show_role(identifier, output_format)
     elif resource_type == "teams":
         if identifier:
-            # If identifier provided with plural form, show single resource
             from src.commands.team import show_team
             show_team(identifier, output_format)
         else:
@@ -545,7 +645,6 @@ def get(
             list_teams(output=output_format)
     elif resource_type == "team":
         if not identifier:
-            # Default to listing all teams
             from src.commands.team import list_teams
             list_teams(output=output_format)
         else:
@@ -553,7 +652,6 @@ def get(
             show_team(identifier, output_format)
     elif resource_type == "policies":
         if identifier:
-            # If identifier provided with plural form, show single resource
             from src.commands.policy import show_policy
             show_policy(identifier, output_format)
         else:
@@ -561,7 +659,6 @@ def get(
             list_policies(output=output_format)
     elif resource_type == "policy":
         if not identifier:
-            # Default to listing all policies
             from src.commands.policy import list_policies
             list_policies(output=output_format)
         else:
@@ -569,7 +666,6 @@ def get(
             show_policy(identifier, output_format)
     elif resource_type == "users":
         if identifier:
-            # If identifier provided with plural form, show single resource
             from src.commands.user import show_user
             show_user(identifier, output_format)
         else:
@@ -578,13 +674,11 @@ def get(
     elif resource_type == "user":
         from src.commands.user import show_user, me
         if not identifier:
-            # Default to current user
             me(output_format)
         else:
             show_user(identifier, output_format)
     elif resource_type == "workspaces":
         if identifier:
-            # If identifier provided with plural form, show single resource
             from src.commands.workspace import show_workspace
             show_workspace(identifier, output_format)
         else:
@@ -592,16 +686,455 @@ def get(
             list_workspaces(output=output_format)
     elif resource_type == "workspace":
         if not identifier:
-            # Default to listing all workspaces
             from src.commands.workspace import list_workspaces
             list_workspaces(output=output_format)
         else:
             from src.commands.workspace import show_workspace
             show_workspace(identifier, output_format)
+    # Agent handling
+    elif resource_type in ["agent", "agents"]:
+        if identifier:
+            from src.commands.agent import show_agent
+            show_agent(identifier, output=output)
+        else:
+            from src.commands.agent import list_agents
+            list_agents(output=output)
+    # Workflow handling
+    elif resource_type in ["workflow", "workflows"]:
+        if identifier:
+            from src.commands.workflow import show_workflow
+            show_workflow(identifier, output=output)
+        else:
+            from src.commands.workflow import list_workflows
+            list_workflows(output=output)
+    # Run handling
+    elif resource_type in ["run", "runs"]:
+        if identifier:
+            from src.commands.run import show_run
+            show_run(identifier, output=output)
+        else:
+            from src.commands.run import list_runs
+            list_runs(output=output)
+    # Tool handling
+    elif resource_type in ["tool", "tools"]:
+        if identifier:
+            from src.commands.tool import show_tool
+            show_tool(identifier, output=output)
+        else:
+            from src.commands.tool import list_tools
+            list_tools(output=output)
     else:
         typer.echo(f"Unknown resource type: {resource_type}")
-        typer.echo("Valid types: role/roles, team/teams, workspace/ws, user/users, policy/policies")
+        typer.echo("Valid types: role/roles, team/teams, workspace/ws, user/users, policy/policies, agent/agents, workflow/wf, run/runs, tool/tools")
         raise typer.Exit(1)
+
+# ============= Export & Deploy Commands =============
+
+@app.command(name="export-all")
+def export_all(
+    output_dir: str = typer.Option("aegis-export", "--output", "-o", help="Output directory"),
+    include_docker: bool = typer.Option(True, "--docker/--no-docker", help="Include Docker Compose"),
+    include_k8s: bool = typer.Option(False, "--k8s", help="Include Kubernetes manifests")
+):
+    """Export all agents and workflows to YAML files for deployment."""
+    import os
+    import yaml
+    from rich.console import Console
+    from src.api_client import get_api_client
+    
+    console = Console()
+    client = get_api_client()
+    
+    os.makedirs(output_dir, exist_ok=True)
+    agents_dir = os.path.join(output_dir, "agents")
+    workflows_dir = os.path.join(output_dir, "workflows")
+    os.makedirs(agents_dir, exist_ok=True)
+    os.makedirs(workflows_dir, exist_ok=True)
+    
+    try:
+        # Export agents
+        agents_response = client.list_agents()
+        agents = []
+        if agents_response.status_code == 200:
+            agents = agents_response.json()
+            for agent in agents:
+                from src.commands.agent import _export_agent_to_yaml
+                file_path = os.path.join(agents_dir, f"{agent['name']}.yaml")
+                _export_agent_to_yaml(agent, file_path)
+                console.print(f"[green]Agent:[/green] {agent['name']}")
+        
+        # Export workflows
+        workflows_response = client.list_workflows()
+        workflows = []
+        if workflows_response.status_code == 200:
+            workflows = workflows_response.json()
+            for wf in workflows:
+                from src.commands.workflow import _export_workflow_to_yaml
+                file_path = os.path.join(workflows_dir, f"{wf['name']}.yaml")
+                _export_workflow_to_yaml(wf, file_path)
+                console.print(f"[green]Workflow:[/green] {wf['name']}")
+        
+        # Generate Docker Compose if requested
+        if include_docker:
+            docker_compose = _generate_docker_compose(agents, workflows)
+            docker_path = os.path.join(output_dir, "docker-compose.yml")
+            with open(docker_path, "w") as f:
+                yaml.dump(docker_compose, f, default_flow_style=False, sort_keys=False)
+            console.print(f"[green]Docker Compose:[/green] {docker_path}")
+        
+        # Generate Kubernetes manifests if requested
+        if include_k8s:
+            k8s_dir = os.path.join(output_dir, "kubernetes")
+            os.makedirs(k8s_dir, exist_ok=True)
+            
+            # Generate deployment and configmaps
+            _generate_k8s_manifests(agents, workflows, k8s_dir)
+            console.print(f"[green]Kubernetes:[/green] {k8s_dir}/")
+        
+        # Generate README
+        readme_content = _generate_deployment_readme(output_dir, include_docker, include_k8s)
+        with open(os.path.join(output_dir, "README.txt"), "w") as f:
+            f.write(readme_content)
+        
+        console.print(f"\n[bold green]Export complete![/bold green]")
+        console.print(f"  Agents: {len(agents)}")
+        console.print(f"  Workflows: {len(workflows)}")
+        console.print(f"  Location: {output_dir}/")
+        
+    except Exception as e:
+        console.print(f"[red]Error during export:[/red] {e}")
+
+
+def _generate_docker_compose(agents: list, workflows: list) -> dict:
+    """Generate Docker Compose file for deployment."""
+    return {
+        "version": "3.8",
+        "services": {
+            "aegis-service": {
+                "image": "aegis-service:latest",
+                "ports": ["8000:8000"],
+                "environment": {
+                    "DB_HOST": "postgres",
+                    "DB_PORT": "5432",
+                    "DB_NAME": "agentic_ops",
+                    "DB_USER": "aegis_app",
+                    "DB_PASSWORD": "${DB_PASSWORD:-password123}",
+                    "OPENAI_API_KEY": "${OPENAI_API_KEY}",
+                    "GEMINI_API_KEY": "${GEMINI_API_KEY}",
+                },
+                "volumes": [
+                    "./agents:/app/agents:ro",
+                    "./workflows:/app/workflows:ro"
+                ],
+                "depends_on": ["postgres"],
+                "restart": "unless-stopped"
+            },
+            "postgres": {
+                "image": "postgres:15-alpine",
+                "environment": {
+                    "POSTGRES_DB": "agentic_ops",
+                    "POSTGRES_USER": "aegis_app",
+                    "POSTGRES_PASSWORD": "${DB_PASSWORD:-password123}"
+                },
+                "volumes": ["postgres_data:/var/lib/postgresql/data"],
+                "restart": "unless-stopped"
+            }
+        },
+        "volumes": {
+            "postgres_data": {}
+        }
+    }
+
+
+def _generate_k8s_manifests(agents: list, workflows: list, output_dir: str):
+    """Generate Kubernetes manifests."""
+    import yaml
+    import os
+    
+    # Namespace
+    namespace = {
+        "apiVersion": "v1",
+        "kind": "Namespace",
+        "metadata": {"name": "aegis"}
+    }
+    
+    # ConfigMap with agent configs
+    agent_configs = {name: agent for name, agent in [(a["name"], a) for a in agents]}
+    configmap = {
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "metadata": {
+            "name": "aegis-agents-config",
+            "namespace": "aegis"
+        },
+        "data": {
+            "agents.json": yaml.dump(agent_configs)
+        }
+    }
+    
+    # Deployment
+    deployment = {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "metadata": {
+            "name": "aegis-service",
+            "namespace": "aegis"
+        },
+        "spec": {
+            "replicas": 1,
+            "selector": {"matchLabels": {"app": "aegis-service"}},
+            "template": {
+                "metadata": {"labels": {"app": "aegis-service"}},
+                "spec": {
+                    "containers": [{
+                        "name": "aegis-service",
+                        "image": "aegis-service:latest",
+                        "ports": [{"containerPort": 8000}],
+                        "envFrom": [{"secretRef": {"name": "aegis-secrets"}}],
+                        "volumeMounts": [{
+                            "name": "agents-config",
+                            "mountPath": "/app/config"
+                        }]
+                    }],
+                    "volumes": [{
+                        "name": "agents-config",
+                        "configMap": {"name": "aegis-agents-config"}
+                    }]
+                }
+            }
+        }
+    }
+    
+    # Service
+    service = {
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {
+            "name": "aegis-service",
+            "namespace": "aegis"
+        },
+        "spec": {
+            "selector": {"app": "aegis-service"},
+            "ports": [{"port": 8000, "targetPort": 8000}],
+            "type": "ClusterIP"
+        }
+    }
+    
+    # Write manifests
+    with open(os.path.join(output_dir, "namespace.yaml"), "w") as f:
+        yaml.dump(namespace, f)
+    
+    with open(os.path.join(output_dir, "configmap.yaml"), "w") as f:
+        yaml.dump(configmap, f)
+    
+    with open(os.path.join(output_dir, "deployment.yaml"), "w") as f:
+        yaml.dump(deployment, f)
+    
+    with open(os.path.join(output_dir, "service.yaml"), "w") as f:
+        yaml.dump(service, f)
+
+
+def _generate_deployment_readme(output_dir: str, docker: bool, k8s: bool) -> str:
+    """Generate README for deployment."""
+    content = """AEGIS DEPLOYMENT EXPORT
+======================
+
+This directory contains exported agents and workflows from your Aegis instance.
+
+STRUCTURE
+---------
+agents/      - Agent YAML definitions
+workflows/   - Workflow YAML definitions
+"""
+    
+    if docker:
+        content += """
+docker-compose.yml - Docker Compose deployment
+
+DOCKER DEPLOYMENT
+-----------------
+1. Set environment variables:
+   export DB_PASSWORD=your_password
+   export OPENAI_API_KEY=your_key
+   export GEMINI_API_KEY=your_key
+
+2. Start services:
+   docker-compose up -d
+
+3. Access API at http://localhost:8000
+"""
+    
+    if k8s:
+        content += """
+kubernetes/  - Kubernetes manifests
+
+KUBERNETES DEPLOYMENT
+---------------------
+1. Create secrets:
+   kubectl create secret generic aegis-secrets \\
+     --from-literal=DB_PASSWORD=your_password \\
+     --from-literal=OPENAI_API_KEY=your_key
+
+2. Apply manifests:
+   kubectl apply -f kubernetes/
+
+3. Port forward to access:
+   kubectl port-forward svc/aegis-service 8000:8000 -n aegis
+"""
+    
+    content += """
+IMPORTING AGENTS
+----------------
+To import agents into a new Aegis instance:
+  aegis agent import agents/my-agent.yaml
+  
+Or apply all:
+  aegis agent apply agents/ -r
+
+For help: aegis --help
+"""
+    return content
+
+
+# ============= Config Commands =============
+
+@app.command(name="config")
+def config_cmd(
+    key: Optional[str] = typer.Argument(None, help="Config key to get/set (api_url, output_format)"),
+    value: Optional[str] = typer.Argument(None, help="Value to set"),
+    show_all: bool = typer.Option(False, "--all", "-a", help="Show all config values")
+):
+    """View or modify CLI configuration."""
+    from rich.console import Console
+    from src.config import load_config, save_config, get_api_url, set_api_url, set_default_output_format, get_default_output_format
+    
+    console = Console()
+    
+    if show_all or (key is None and value is None):
+        # Show all config
+        config = load_config()
+        console.print("\n[bold cyan]Aegis CLI Configuration[/bold cyan]\n")
+        console.print(f"[bold]API URL:[/bold] {get_api_url()}")
+        console.print(f"[bold]Output Format:[/bold] {get_default_output_format()}")
+        console.print(f"[bold]Auth Token:[/bold] {'[green]Set[/green]' if config.get('auth_token') else '[yellow]Not set[/yellow]'}")
+        console.print(f"\n[dim]Config file: ~/.aegis/config[/dim]")
+        return
+    
+    if key and value is None:
+        # Get specific key
+        config = load_config()
+        if key == "api_url":
+            console.print(f"{get_api_url()}")
+        elif key == "output_format":
+            console.print(f"{get_default_output_format()}")
+        elif key in config:
+            console.print(f"{config[key]}")
+        else:
+            console.print(f"[yellow]Config key '{key}' not found[/yellow]")
+        return
+    
+    if key and value:
+        # Set specific key
+        if key == "api_url":
+            set_api_url(value)
+            console.print(f"[green]API URL set to: {value}[/green]")
+        elif key == "output_format":
+            if value.lower() in ["text", "json", "yaml", "table"]:
+                set_default_output_format(value.lower())
+                console.print(f"[green]Default output format set to: {value}[/green]")
+            else:
+                console.print("[red]Invalid output format. Use: text, json, yaml, or table[/red]")
+        else:
+            config = load_config()
+            config[key] = value
+            save_config(config)
+            console.print(f"[green]Config '{key}' set to: {value}[/green]")
+
+
+@app.command(name="logout")
+def logout():
+    """Clear authentication and logout."""
+    from rich.console import Console
+    from src.config import clear_auth
+    
+    console = Console()
+    clear_auth()
+    console.print("[green]Logged out successfully.[/green]")
+
+
+@app.command(name="whoami")
+def whoami():
+    """Show current authenticated user."""
+    from src.commands.user import me
+    me(output=None)
+
+
+# ============= Convenience Commands =============
+
+@app.command(name="run-agent")
+def run_agent_quick(
+    agent: str = typer.Argument(..., help="Agent name or ID"),
+    message: str = typer.Argument(..., help="Input message"),
+    wait: bool = typer.Option(False, "-w", "--wait", help="Wait for completion"),
+    context: Optional[str] = typer.Option(None, "-c", "--context", help="Context variables as JSON")
+):
+    """Quick command to run an agent."""
+    from src.commands.agent import run as agent_run
+    agent_run(agent, message, context=context, wait=wait)
+
+
+@app.command(name="run-workflow")
+def run_workflow_quick(
+    workflow: str = typer.Argument(..., help="Workflow name or ID"),
+    message: str = typer.Argument(..., help="Input message"),
+    wait: bool = typer.Option(False, "-w", "--wait", help="Wait for completion"),
+    context: Optional[str] = typer.Option(None, "-c", "--context", help="Context variables as JSON")
+):
+    """Quick command to run a workflow."""
+    from src.commands.workflow import run as workflow_run
+    workflow_run(workflow, message, context=context, wait=wait)
+
+
+@app.command(name="stats")
+def show_stats(
+    days: int = typer.Option(30, "-d", "--days", help="Number of days for statistics"),
+    output: Optional[str] = typer.Option(None, "-o", "--output", help="Output format: json, yaml")
+):
+    """Show run statistics summary."""
+    from src.commands.run import stats as run_stats
+    run_stats(days=days, output=output)
+
+
+@app.command(name="watch")
+def watch_run(
+    run_id: str = typer.Argument(..., help="Run ID to watch"),
+    interval: int = typer.Option(2, "-i", "--interval", help="Poll interval in seconds")
+):
+    """Watch a run until completion."""
+    from src.commands.run import watch as run_watch
+    run_watch(run_id, interval=interval)
+
+
+@app.command(name="cancel")
+def cancel_run(
+    run_id: str = typer.Argument(..., help="Run ID to cancel"),
+    yes: bool = typer.Option(False, "-y", "--yes", help="Skip confirmation")
+):
+    """Cancel a running execution."""
+    from src.commands.run import cancel as run_cancel
+    run_cancel(run_id, yes=yes)
+
+
+@app.command(name="logs")
+def show_logs(
+    run_id: str = typer.Argument(..., help="Run ID"),
+    follow: bool = typer.Option(False, "-f", "--follow", help="Follow logs in real-time"),
+    tail: int = typer.Option(100, "-n", "--tail", help="Number of lines to show")
+):
+    """Show logs for a run (messages and tool calls)."""
+    from src.commands.run import logs as run_logs
+    run_logs(run_id, follow=follow, tail=tail)
+
 
 # Set up error handling at module level
 import sys
