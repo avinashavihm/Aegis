@@ -168,6 +168,10 @@ class Aegis:
                 params["required"].remove(__CTX_VARS_NAME__)
         
         create_model = model_override or agent.model
+
+        # Normalize Gemini provider prefix (litellm expects gemini/...)
+        if create_model.startswith("google/gemini"):
+            create_model = create_model.replace("google/", "gemini/", 1)
         
         # Adapt for Gemini
         if "gemini" in create_model.lower():
@@ -204,14 +208,19 @@ class Aegis:
             
             completion_response = completion(**create_params)
         else:
-            # Non-function calling mode
-            assert agent.tool_choice == "required", \
-                f"Non-function calling mode MUST use tool_choice = 'required'"
+            # Non-function calling mode: if tools are present, force tool_choice to "required"
+            if tools and agent.tool_choice != "required":
+                logger.warning("Non-function calling mode: forcing tool_choice='required'")
+                agent.tool_choice = "required"
             
-            last_content = messages[-1]["content"]
-            tools_description = convert_tools_to_description(tools)
-            messages[-1]["content"] = last_content + "\n[IMPORTANT] You MUST use the tools provided to complete the task.\n" + \
-                SYSTEM_PROMPT_SUFFIX_TEMPLATE.format(description=tools_description)
+            if tools:
+                last_content = messages[-1]["content"]
+                tools_description = convert_tools_to_description(tools)
+                messages[-1]["content"] = (
+                    last_content
+                    + "\n[IMPORTANT] You MUST use the tools provided to complete the task.\n"
+                    + SYSTEM_PROMPT_SUFFIX_TEMPLATE.format(description=tools_description)
+                )
             
             # Remove sender field if needed
             NO_SENDER_MODE = False

@@ -361,6 +361,21 @@ async def list_providers(user_id: str = Depends(get_current_user_id)):
             "requires_key": True,
             "requires_base_url": True,
             "key_url": "https://portal.azure.com"
+        },
+        {
+            "id": "firecrawl",
+            "name": "Firecrawl",
+            "description": "Firecrawl crawl/search API",
+            "requires_key": True,
+            "key_url": "https://www.firecrawl.dev/"
+        },
+        {
+            "id": "custom",
+            "name": "Custom",
+            "description": "Custom provider with optional base URL",
+            "requires_key": True,
+            "requires_base_url": False,
+            "key_url": ""
         }
     ]
     return providers

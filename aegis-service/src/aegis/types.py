@@ -180,6 +180,11 @@ class Agent(BaseModel):
     metadata: Dict[str, Any] = {}
     version: str = "1.0.0"
     tags: List[str] = []
+
+    class Config:
+        # Allow dynamically attached fields (e.g., self.config) on generated agents
+        extra = "allow"
+        arbitrary_types_allowed = True
     
     def get_instructions(self, context_variables: dict = None) -> str:
         """Get rendered instructions, supporting both legacy and structured formats"""

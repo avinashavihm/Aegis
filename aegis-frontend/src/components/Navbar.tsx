@@ -15,7 +15,7 @@ export default function Navbar() {
       <Link to="/tools">Tools</Link>
       <Link to="/mcp">MCP</Link>
       <Link to="/agents">Agents</Link>
-      <Link to="/workflows">Workflows</Link>
+      <Link to="/agent-generator">✨ Agent Generator</Link>
       <Link to="/runs">Runs</Link>
       <Link to="/settings">⚙️ Settings</Link>
       <span className="nav-right">

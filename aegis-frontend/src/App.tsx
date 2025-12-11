@@ -10,11 +10,11 @@ import Roles from './pages/Roles'
 import Policies from './pages/Policies'
 import Workspaces from './pages/Workspaces'
 import Agents from './pages/Agents'
-import Workflows from './pages/Workflows'
 import Runs from './pages/Runs'
 import Tools from './pages/Tools'
 import MCPServers from './pages/MCPServers'
 import Settings from './pages/Settings'
+import AgentGenerator from './pages/AgentGenerator'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth()
@@ -43,7 +43,7 @@ function App() {
           <Route path="/tools" element={<ProtectedRoute><Tools /></ProtectedRoute>} />
           <Route path="/mcp" element={<ProtectedRoute><MCPServers /></ProtectedRoute>} />
           <Route path="/agents" element={<ProtectedRoute><Agents /></ProtectedRoute>} />
-          <Route path="/workflows" element={<ProtectedRoute><Workflows /></ProtectedRoute>} />
+          <Route path="/agent-generator" element={<ProtectedRoute><AgentGenerator /></ProtectedRoute>} />
           <Route path="/runs" element={<ProtectedRoute><Runs /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         </Routes>

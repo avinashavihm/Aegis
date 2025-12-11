@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from src.config import settings
 from src.routers import auth, users, teams, roles, policies, workspaces
-from src.routers import agents, workflows, runs, tools, agent_files, mcp, configuration, files
+from src.routers import agents, runs, tools, agent_files, mcp, configuration, files, agent_generator
 from src.services.logging_service import AegisLogger
 
 app = FastAPI(
@@ -56,13 +56,15 @@ app.include_router(workspaces.router)
 
 # Include routers - Agent Framework
 app.include_router(agents.router)
-app.include_router(workflows.router)
 app.include_router(runs.router)
 app.include_router(tools.router)
 app.include_router(agent_files.router)
 app.include_router(mcp.router)
 app.include_router(configuration.router)
 app.include_router(files.router)
+
+# Include routers - Superior Agent Generator 
+app.include_router(agent_generator.router)
 
 
 @app.get("/")

@@ -495,4 +495,305 @@ export const api = {
   }> => {
     return request(`/files/supported-types`)
   },
+
+  // ============================================
+  // AGENT GENERATOR - Superior Multi-file Agent Generation
+  // ============================================
+
+  // Agent Registry (declarative agents / sub-agents)
+  listRegisteredAgents: async (): Promise<
+    Array<{
+      name: string
+      description: string
+      input_config?: {
+        inputs: Record<
+          string,
+          {
+            description: string
+            type: 'string' | 'number' | 'integer' | 'boolean' | 'string[]' | 'number[]'
+            required: boolean
+          }
+        >
+      }
+      output_config?: {
+        outputName: string
+        description: string
+        schema?: Record<string, unknown>
+      }
+      model?: string
+      run_config?: { max_time_minutes?: number; max_turns?: number }
+    }>
+  > => {
+    return request('/agent-generator/registry/agents')
+  },
+
+  getAgentDirectory: async (): Promise<{ markdown: string }> => {
+    return request('/agent-generator/registry/directory')
+  },
+
+  runRegisteredAgentStream: async (
+    data: {
+      agent_name: string
+      inputs: Record<string, unknown>
+      model_override?: string
+      max_time_minutes?: number
+      max_turns?: number
+    },
+    onEvent: (event: any) => void
+  ): Promise<void> => {
+    const response = await fetch(`${API_BASE}/agent-generator/registry/run/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+      },
+      body: JSON.stringify(data),
+    })
+
+    if (!response.ok) {
+      throw new ApiError(`HTTP ${response.status}`, response.status)
+    }
+
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+
+    while (reader) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const chunk = decoder.decode(value)
+      const lines = chunk.split('\n')
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const event = JSON.parse(line.slice(6))
+            onEvent(event)
+          } catch {
+            // ignore parse errors
+          }
+        }
+      }
+    }
+  },
+
+  // Project Types
+  listProjectTypes: async (): Promise<Record<string, { name: string; description: string; use_case: string }>> => {
+    const response = await request<{ types: Record<string, { name: string; description: string; use_case: string }> }>('/agent-generator/types')
+    return response.types
+  },
+
+  // Generate Agent Project
+  generateAgent: async (data: {
+    description: string
+    project_name?: string
+    project_type?: string
+    tools?: string[]
+    capabilities?: string[]
+    model?: string
+    key_providers?: string[]
+  }): Promise<{
+    success: boolean
+    project_name: string
+    project_type: string
+    files_count: number
+    files: string[]
+    dependencies: string[]
+    created_at: string
+    run_command: string
+    interactive_command: string
+    message?: string
+    error?: string
+  }> => {
+    return request('/agent-generator/generate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  // Generate Agent with Streaming
+  generateAgentStream: async (
+    data: {
+      description: string
+      project_name?: string
+      project_type?: string
+      tools?: string[]
+      capabilities?: string[]
+      model?: string
+      key_providers?: string[]
+    },
+    onEvent: (event: any) => void
+  ): Promise<void> => {
+    const response = await fetch(`${API_BASE}/agent-generator/generate/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+      },
+      body: JSON.stringify(data),
+    })
+
+    if (!response.ok) {
+      throw new ApiError(`HTTP ${response.status}`, response.status)
+    }
+
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+
+    while (reader) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const chunk = decoder.decode(value)
+      const lines = chunk.split('\n')
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const event = JSON.parse(line.slice(6))
+            onEvent(event)
+          } catch (e) {
+            // ignore parse errors
+          }
+        }
+      }
+    }
+  },
+
+  // Run in Sandbox
+  runInSandbox: async (data: {
+    project_name: string
+    task: string
+    sandbox_type?: string
+    timeout_seconds?: number
+    env_variables?: Record<string, string>
+    key_providers?: string[]
+  }): Promise<{
+    success: boolean
+    output?: string
+    stderr?: string
+    exit_code?: number
+    execution_time?: number
+    sandbox_type: string
+    error?: string
+  }> => {
+    return request('/agent-generator/sandbox/run', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  // Run in Sandbox with Streaming
+  runInSandboxStream: async (
+    data: {
+      project_name: string
+      task: string
+      sandbox_type?: string
+      timeout_seconds?: number
+      env_variables?: Record<string, string>
+      key_providers?: string[]
+    },
+    onEvent: (event: any) => void
+  ): Promise<void> => {
+    const response = await fetch(`${API_BASE}/agent-generator/sandbox/run/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+      },
+      body: JSON.stringify(data),
+    })
+
+    if (!response.ok) {
+      throw new ApiError(`HTTP ${response.status}`, response.status)
+    }
+
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+
+    while (reader) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const chunk = decoder.decode(value)
+      const lines = chunk.split('\n')
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const event = JSON.parse(line.slice(6))
+            onEvent(event)
+          } catch (e) {
+            // ignore parse errors
+          }
+        }
+      }
+    }
+  },
+
+  // Create Package
+  createPackage: async (data: {
+    project_name: string
+    format?: string
+    include_docker?: boolean
+  }): Promise<{
+    success: boolean
+    package_name: string
+    format: string
+    size_bytes: number
+    file_count: number
+    download_url?: string
+    base64_content?: string
+    error?: string
+  }> => {
+    return request('/agent-generator/package', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  // Download Package
+  downloadPackage: async (project_name: string, format: string = 'zip', include_docker: boolean = false): Promise<Blob> => {
+    const response = await fetch(`${API_BASE}/agent-generator/package/${project_name}/download?format=${format}&include_docker=${include_docker}`, {
+      headers: {
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+      },
+    })
+
+    if (!response.ok) {
+      throw new ApiError(`HTTP ${response.status}`, response.status)
+    }
+
+    return response.blob()
+  },
+
+  // List Projects
+  listProjects: async (): Promise<string[]> => {
+    return request('/agent-generator/projects')
+  },
+
+  // Get Project Files
+  getProjectFiles: async (project_name: string): Promise<{
+    success: boolean
+    project_name: string
+    file_count: number
+    files: string[]
+    structure: string
+    error?: string
+  }> => {
+    return request(`/agent-generator/projects/${project_name}`)
+  },
+
+  // Get File Content
+  getFileContent: async (project_name: string, file_path: string): Promise<{
+    path: string
+    content: string
+  }> => {
+    return request(`/agent-generator/projects/${project_name}/files/${file_path}`)
+  },
+
+  // Delete Project
+  deleteProject: async (project_name: string): Promise<{ success: boolean; message: string }> => {
+    return request(`/agent-generator/projects/${project_name}`, { method: 'DELETE' })
+  },
 }

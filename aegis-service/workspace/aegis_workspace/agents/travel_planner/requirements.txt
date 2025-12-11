@@ -1,0 +1,6 @@
+aegis-sdk
+python-dotenv
+aiohttp
+beautifulsoup4
+serpapi
+googlemaps

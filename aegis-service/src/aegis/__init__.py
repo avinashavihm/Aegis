@@ -7,6 +7,9 @@ A comprehensive framework for building LLM-powered agents with:
 - Autonomous operations
 - Knowledge grounding
 - Agent Store with templates
+- Superior Agent Generation 
+- Sandbox Execution
+- Package Downloads
 """
 
 # Allow imports as both `src.aegis` and `aegis`
@@ -21,6 +24,15 @@ from aegis.types import (
     TaskStatus, TaskPlan, SubTask,
     EscalationLevel, EscalationRule,
     AgentCapability
+)
+
+# Generator module - Superior agent project generation
+from aegis.generator import (
+    AgentGenerator,
+    AgentSandbox,
+    AgentPackager,
+    ProjectTemplate,
+    AGENT_PROJECT_TYPES
 )
 
 __version__ = "0.2.0"
@@ -52,5 +64,12 @@ __all__ = [
     "EscalationRule",
     
     # Capabilities
-    "AgentCapability"
+    "AgentCapability",
+    
+    # Generator (Superior Agent Projects)
+    "AgentGenerator",
+    "AgentSandbox",
+    "AgentPackager",
+    "ProjectTemplate",
+    "AGENT_PROJECT_TYPES"
 ]

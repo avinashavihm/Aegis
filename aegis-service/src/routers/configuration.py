@@ -11,6 +11,7 @@ from datetime import datetime
 import hashlib
 import base64
 import os
+from psycopg2.extras import Json
 
 from src.database import get_db_connection
 from src.dependencies import get_current_user_id
@@ -112,7 +113,7 @@ async def create_api_key(data: APIKeyCreate, user_id: UUID = Depends(get_current
                           is_default, is_active, metadata, created_at, updated_at
             """, (data.name, data.provider, encrypted_key, preview, 
                   data.base_url, data.organization_id, data.is_default, 
-                  data.metadata or {}, user_id_str))
+                  Json(data.metadata or {}), user_id_str))
             conn.commit()
             row = cur.fetchone()
             return dict(row)
@@ -183,7 +184,7 @@ async def update_api_key(key_id: UUID, data: APIKeyUpdate, user_id: UUID = Depen
             
             if data.metadata is not None:
                 updates.append("metadata = %s")
-                params.append(data.metadata)
+                params.append(Json(data.metadata))
             
             if not updates:
                 raise HTTPException(status_code=400, detail="No updates provided")

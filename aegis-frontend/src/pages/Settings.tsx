@@ -35,6 +35,7 @@ export default function Settings() {
     base_url: '',
     organization_id: '',
     is_default: false,
+    custom_provider_id: '',
   })
 
   const loadData = async () => {
@@ -67,15 +68,28 @@ export default function Settings() {
   const handleCreateKey = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      const providerValue =
+        keyForm.provider === 'custom' && keyForm.custom_provider_id
+          ? keyForm.custom_provider_id
+          : keyForm.provider
+
       await api.createAPIKey({
         name: keyForm.name,
-        provider: keyForm.provider,
+        provider: providerValue,
         api_key: keyForm.api_key,
         base_url: keyForm.base_url || undefined,
         organization_id: keyForm.organization_id || undefined,
         is_default: keyForm.is_default,
       })
-      setKeyForm({ name: '', provider: '', api_key: '', base_url: '', organization_id: '', is_default: false })
+      setKeyForm({
+        name: '',
+        provider: '',
+        api_key: '',
+        base_url: '',
+        organization_id: '',
+        is_default: false,
+        custom_provider_id: '',
+      })
       setShowAddKey(false)
       loadData()
       showSuccess('API key added successfully!')
@@ -215,6 +229,22 @@ export default function Settings() {
                           Get API Key →
                         </a>
                       </div>
+
+                      {keyForm.provider === 'custom' && (
+                        <div style={{ marginBottom: 16 }}>
+                          <label>Custom Provider ID</label>
+                          <input
+                            type="text"
+                            placeholder="e.g., firecrawl, weatherapi, crawl4ai"
+                            value={keyForm.custom_provider_id}
+                            onChange={e => setKeyForm({ ...keyForm, custom_provider_id: e.target.value })}
+                            required
+                          />
+                          <p style={{ color: '#666', fontSize: '0.85em', marginTop: 6 }}>
+                            This value will be stored as the provider key (used for selection elsewhere).
+                          </p>
+                        </div>
+                      )}
 
                       <div style={{ marginBottom: 16 }}>
                         <label>Key Name</label>

@@ -1,0 +1,5 @@
+openai
+python-dotenv
+serpapi
+requests
+aegis-sdk
