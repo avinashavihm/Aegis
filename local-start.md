@@ -1,5 +1,5 @@
 # Local start guide (API + CLI)
-
+https://github.com/Infocion/aegis-cli.git
 ## 1) Start the API locally (no Docker)
 ```bash
 cd aegis-service
