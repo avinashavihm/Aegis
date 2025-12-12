@@ -14,8 +14,12 @@ class Config:
         Initializes the configuration settings.
         """
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        if not self.openai_api_key:
-            raise ValueError("OPENAI_API_KEY is not set in the environment variables.")
+        self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+        self.gemini_api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        self.groq_api_key = os.getenv("GROQ_API_KEY")
+        self.mistral_api_key = os.getenv("MISTRAL_API_KEY")
+        self.cohere_api_key = os.getenv("COHERE_API_KEY")
+        self.together_api_key = os.getenv("TOGETHER_API_KEY")
 
         self.log_level = os.getenv("LOG_LEVEL", "INFO").upper()
         self.travel_api_key = os.getenv("TRAVEL_API_KEY")
@@ -26,9 +30,29 @@ class Config:
         self.max_retries = int(os.getenv("MAX_RETRIES", "3"))
         self.retry_delay = int(os.getenv("RETRY_DELAY", "5"))
 
-        # Agent specific configurations (example)
-        self.planning_agent_model = os.getenv("PLANNING_AGENT_MODEL", "gpt-4")
-        self.booking_agent_model = os.getenv("BOOKING_AGENT_MODEL", "gpt-3.5-turbo")
+        # Agent specific configurations (example). Choose available provider if set.
+        self.planning_agent_model = os.getenv("PLANNING_AGENT_MODEL")
+        self.booking_agent_model = os.getenv("BOOKING_AGENT_MODEL")
+
+        # Choose an available model if none provided
+        provider_models = [
+            (self.openai_api_key, "gpt-4o"),
+            (self.anthropic_api_key, "claude-3-opus-20240229"),
+            (self.gemini_api_key, "gemini-1.5-pro"),
+            (self.groq_api_key, "llama-3-70b"),
+            (self.mistral_api_key, "mistral-large-latest"),
+            (self.cohere_api_key, "command-r-plus"),
+            (self.together_api_key, "meta-llama/Meta-Llama-3-70B-Instruct-Turbo"),
+        ]
+        fallback = None
+        for key, model in provider_models:
+            if key:
+                fallback = model
+                break
+        if not self.planning_agent_model:
+            self.planning_agent_model = fallback or "gpt-4o"
+        if not self.booking_agent_model:
+            self.booking_agent_model = fallback or "gpt-3.5-turbo"
 
         self.validate_config()
 
