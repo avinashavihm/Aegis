@@ -2,4 +2,11 @@ openai
 python-dotenv
 serpapi
 requests
-aegis-sdk
+litellm
+pydantic
+typing-extensions
+python-multipart
+fastapi
+uvicorn
+tenacity
+httpx

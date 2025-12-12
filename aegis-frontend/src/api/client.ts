@@ -796,4 +796,158 @@ export const api = {
   deleteProject: async (project_name: string): Promise<{ success: boolean; message: string }> => {
     return request(`/agent-generator/projects/${project_name}`, { method: 'DELETE' })
   },
+
+  // Generate Multiple Agents
+  generateMultipleAgents: async (data: {
+    agents: Array<{
+      description: string
+      project_name?: string
+      project_type?: string
+      tools?: string[]
+      capabilities?: string[]
+      model?: string
+      key_providers?: string[]
+    }>
+    workflow_name?: string
+  }): Promise<{
+    success: boolean
+    agents: Array<{
+      success: boolean
+      project_name: string
+      project_type: string
+      files_count: number
+      files: string[]
+      dependencies: string[]
+      created_at: string
+      run_command: string
+      interactive_command: string
+      message?: string
+      error?: string
+    }>
+    workflow_name?: string
+    workflow_created: boolean
+    message?: string
+    error?: string
+  }> => {
+    return request('/agent-generator/generate-multiple', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  // Update Agent Configuration
+  updateAgentConfig: async (data: {
+    project_name: string
+    config_updates: Record<string, any>
+    file_path?: string
+  }): Promise<{
+    success: boolean
+    project_name: string
+    files_updated: string[]
+    message?: string
+    error?: string
+  }> => {
+    return request('/agent-generator/update-config', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  // Create Workflow from Agents
+  createWorkflowFromAgents: async (data: {
+    workflow_name: string
+    agent_projects: string[]
+    description?: string
+    execution_mode?: string
+  }): Promise<{
+    success: boolean
+    workflow_name: string
+    workflow_id?: string
+    agent_count: number
+    message?: string
+    error?: string
+  }> => {
+    return request('/agent-generator/create-workflow', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  // Update Workflow
+  updateWorkflow: async (data: {
+    workflow_name: string
+    updates: Record<string, any>
+  }): Promise<{
+    success: boolean
+    workflow_name: string
+    message?: string
+    error?: string
+  }> => {
+    return request('/agent-generator/update-workflow', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  // Generate Docker Artifacts
+  generateDockerArtifacts: async (data: {
+    project_name: string
+    include_compose?: boolean
+  }): Promise<{
+    success: boolean
+    project_name: string
+    artifacts: Array<{
+      filename: string
+      content: string
+      description: string
+    }>
+    package_structure: string
+    message?: string
+    error?: string
+  }> => {
+    return request('/agent-generator/generate-docker-artifacts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  // Build Docker Image
+  buildDockerImage: async (data: {
+    project_name: string
+    image_name?: string
+    build_context?: string
+  }): Promise<{
+    success: boolean
+    project_name: string
+    image_name: string
+    build_output?: string
+    message?: string
+    error?: string
+  }> => {
+    return request('/agent-generator/build-docker-image', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  // Deploy Docker Container
+  deployDockerContainer: async (data: {
+    project_name: string
+    container_name?: string
+    port_mapping?: string
+    env_file?: string
+  }): Promise<{
+    success: boolean
+    project_name: string
+    container_name: string
+    container_id?: string
+    deployment_output?: string
+    message?: string
+    error?: string
+  }> => {
+    return request('/agent-generator/deploy-docker', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
 }

@@ -1,4 +1,4 @@
-import React from 'react'
+// import React from 'react'  // Not needed in modern React
 
 export interface GenerationProgressState {
   stage: 'generating' | 'analyzing' | 'creating' | 'complete' | null

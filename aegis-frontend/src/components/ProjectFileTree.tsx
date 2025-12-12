@@ -16,7 +16,7 @@ interface ProjectFileTreeProps {
 
 export default function ProjectFileTree({
   files,
-  structure,
+  structure: _structure,
   onFileSelect,
   selectedFile
 }: ProjectFileTreeProps) {

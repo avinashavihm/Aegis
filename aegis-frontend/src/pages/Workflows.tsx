@@ -46,7 +46,7 @@ export default function Workflows() {
       const tagsList = tags.split(',').map(t => t.trim()).filter(t => t)
       const steps = JSON.parse(stepsJson)
       await api.createWorkflow({
-        name,
+        name: name,
         description,
         execution_mode: executionMode,
         tags: tagsList,

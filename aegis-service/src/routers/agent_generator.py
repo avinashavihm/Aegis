@@ -17,6 +17,7 @@ import json
 import os
 import base64
 import asyncio
+import subprocess
 from datetime import datetime
 import re
 
@@ -42,6 +43,12 @@ class GenerateAgentRequest(BaseModel):
     key_providers: Optional[List[str]] = Field(None, description="Provider ids whose keys should be injected")
 
 
+class GenerateMultipleAgentsRequest(BaseModel):
+    """Request model for generating multiple agents"""
+    agents: List[GenerateAgentRequest] = Field(..., description="List of agent generation requests")
+    workflow_name: Optional[str] = Field(None, description="Name for the workflow that connects these agents")
+
+
 class GeneratedFileResponse(BaseModel):
     """Response model for a generated file"""
     path: str
@@ -60,6 +67,123 @@ class GenerateAgentResponse(BaseModel):
     created_at: str
     run_command: str
     interactive_command: str
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+
+class GenerateMultipleAgentsResponse(BaseModel):
+    """Response model for multiple agent generation"""
+    success: bool
+    agents: List[GenerateAgentResponse]
+    workflow_name: Optional[str] = None
+    workflow_created: bool = False
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+
+class UpdateAgentConfigRequest(BaseModel):
+    """Request model for updating agent configuration"""
+    project_name: str = Field(..., description="Name of the agent project")
+    config_updates: Dict[str, Any] = Field(..., description="Configuration updates to apply")
+    file_path: Optional[str] = Field(None, description="Specific file to update (optional)")
+
+
+class UpdateAgentConfigResponse(BaseModel):
+    """Response model for agent configuration update"""
+    success: bool
+    project_name: str
+    files_updated: List[str]
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+
+class CreateWorkflowRequest(BaseModel):
+    """Request model for creating a workflow from agents"""
+    workflow_name: str = Field(..., description="Name of the workflow")
+    agent_projects: List[str] = Field(..., description="List of agent project names to include")
+    description: Optional[str] = Field(None, description="Workflow description")
+    execution_mode: str = Field("sequential", description="Workflow execution mode: sequential or parallel")
+
+
+class CreateWorkflowResponse(BaseModel):
+    """Response model for workflow creation"""
+    success: bool
+    workflow_name: str
+    workflow_id: Optional[str] = None
+    agent_count: int
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+
+class UpdateWorkflowRequest(BaseModel):
+    """Request model for updating a workflow"""
+    workflow_name: str
+    updates: Dict[str, Any] = Field(..., description="Workflow updates to apply")
+
+
+class UpdateWorkflowResponse(BaseModel):
+    """Response model for workflow update"""
+    success: bool
+    workflow_name: str
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+
+class GenerateDockerArtifactsRequest(BaseModel):
+    """Request model for generating docker artifacts"""
+    project_name: str = Field(..., description="Name of the agent project")
+    include_compose: bool = Field(True, description="Include docker-compose.yml")
+
+
+class DockerArtifactInfo(BaseModel):
+    """Information about a docker artifact"""
+    filename: str
+    content: str
+    description: str
+
+
+class GenerateDockerArtifactsResponse(BaseModel):
+    """Response model for docker artifacts generation"""
+    success: bool
+    project_name: str
+    artifacts: List[DockerArtifactInfo]
+    package_structure: str
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+
+class BuildDockerImageRequest(BaseModel):
+    """Request model for building docker image"""
+    project_name: str = Field(..., description="Name of the agent project")
+    image_name: Optional[str] = Field(None, description="Custom image name/tag")
+    build_context: Optional[str] = Field(".", description="Build context path")
+
+
+class BuildDockerImageResponse(BaseModel):
+    """Response model for docker image build"""
+    success: bool
+    project_name: str
+    image_name: str
+    build_output: Optional[str] = None
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+
+class DeployDockerRequest(BaseModel):
+    """Request model for deploying docker container"""
+    project_name: str = Field(..., description="Name of the agent project")
+    container_name: Optional[str] = Field(None, description="Custom container name")
+    port_mapping: Optional[str] = Field(None, description="Port mapping (host:container)")
+    env_file: Optional[str] = Field(None, description="Environment file path")
+
+
+class DeployDockerResponse(BaseModel):
+    """Response model for docker deployment"""
+    success: bool
+    project_name: str
+    container_name: str
+    container_id: Optional[str] = None
+    deployment_output: Optional[str] = None
     message: Optional[str] = None
     error: Optional[str] = None
 
@@ -296,6 +420,71 @@ def _extract_missing_module(error_text: str) -> Optional[str]:
     return match.group(1) if match else None
 
 
+async def create_workflow_from_agents(workflow_name: str, agent_names: List[str], user_id: UUID) -> bool:
+    """
+    Create a workflow that connects multiple agents.
+
+    Args:
+        workflow_name: Name of the workflow
+        agent_names: List of agent project names
+        user_id: User ID
+
+    Returns:
+        True if workflow was created successfully
+    """
+    try:
+        from src.schemas import WorkflowStep
+
+        if len(agent_names) < 2:
+            return False
+
+        # Create workflow steps for each agent
+        steps = []
+        for i, agent_name in enumerate(agent_names):
+            step = WorkflowStep(
+                step_id=f"step_{i+1}",
+                agent_id=agent_name,  # For now, use agent name as ID
+                name=f"Execute {agent_name}",
+                description=f"Execute the {agent_name} agent",
+                input_mapping={} if i == 0 else {"input": f"step_{i}.output"},  # Chain outputs
+                output_key=f"step_{i+1}_output",
+                config={"agent_project": agent_name}
+            )
+            steps.append(step)
+
+        # Create workflow in database
+        with get_db_connection(str(user_id)) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO workflows (
+                        name, description, steps, execution_mode,
+                        tags, metadata, status, owner_id
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        workflow_name,
+                        f"Workflow connecting agents: {', '.join(agent_names)}",
+                        json.dumps([s.model_dump() for s in steps]),
+                        "sequential",
+                        json.dumps(["generated", "multi-agent"]),
+                        json.dumps({
+                            "generated_agents": agent_names,
+                            "agent_count": len(agent_names)
+                        }),
+                        "draft",
+                        str(user_id)
+                    )
+                )
+                conn.commit()
+
+        return True
+
+    except Exception as e:
+        print(f"Failed to create workflow: {e}")
+        return False
+
+
 # =============================================================================
 # API Endpoints
 # =============================================================================
@@ -424,6 +613,742 @@ async def generate_agent(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate agent: {str(e)}"
+        )
+
+
+@router.post("/generate-multiple", response_model=GenerateMultipleAgentsResponse)
+async def generate_multiple_agents(
+    request: GenerateMultipleAgentsRequest,
+    current_user_id: UUID = Depends(get_current_user_id)
+):
+    """
+    Generate multiple sophisticated multi-file agent projects.
+
+    This creates production-ready agents with multiple interconnected files,
+    and optionally creates a workflow to connect them.
+    """
+    try:
+        from aegis.generator import AgentGenerator
+        from aegis.generator.project_templates import AgentProjectType
+
+        # Map project type
+        type_map = {
+            "simple": AgentProjectType.SIMPLE,
+            "multi_agent": AgentProjectType.MULTI_AGENT,
+            "data_pipeline": AgentProjectType.DATA_PIPELINE,
+            "web_automation": AgentProjectType.WEB_AUTOMATION,
+            "api_integration": AgentProjectType.API_INTEGRATION,
+            "research": AgentProjectType.RESEARCH,
+            "code_assistant": AgentProjectType.CODE_ASSISTANT,
+            "workflow": AgentProjectType.WORKFLOW,
+            "custom": AgentProjectType.CUSTOM,
+        }
+
+        # Get output directory
+        agents_dir = get_agents_dir(str(current_user_id))
+
+        generated_agents = []
+        workflow_created = False
+
+        # Generate each agent
+        for agent_request in request.agents:
+            project_type = type_map.get(agent_request.project_type.lower(), AgentProjectType.SIMPLE)
+
+            # Create generator and generate project (with user-selected keys applied)
+            allowed = [p.lower() for p in (agent_request.key_providers or [])] or None
+            previous_env = _apply_user_keys_to_env(str(current_user_id), allowed)
+            try:
+                generator = AgentGenerator(model=agent_request.model or "gpt-4o")
+
+                project = generator.generate(
+                    description=agent_request.description,
+                    project_name=agent_request.project_name,
+                    project_type=project_type,
+                    tools=agent_request.tools,
+                    capabilities=agent_request.capabilities,
+                    model_override=agent_request.model
+                )
+            finally:
+                _restore_env(previous_env)
+
+            # Save project
+            project_dir = generator.save_project(project, agents_dir)
+
+            agent_response = GenerateAgentResponse(
+                success=True,
+                project_name=project.name,
+                project_type=agent_request.project_type,
+                files_count=len(project.files),
+                files=[f.path for f in project.files],
+                dependencies=project.dependencies,
+                created_at=project.created_at,
+                run_command=f"cd {project_dir} && python main.py 'your task'",
+                interactive_command=f"cd {project_dir} && python main.py -i",
+                message=f"Successfully generated {project.name} with {len(project.files)} files"
+            )
+            generated_agents.append(agent_response)
+
+        # Create workflow if requested and we have at least 2 agents
+        if request.workflow_name and len(generated_agents) >= 2:
+            try:
+                workflow_created = await create_workflow_from_agents(
+                    request.workflow_name,
+                    [agent.project_name for agent in generated_agents],
+                    current_user_id
+                )
+            except Exception as workflow_error:
+                # Don't fail the entire request if workflow creation fails
+                pass
+
+        return GenerateMultipleAgentsResponse(
+            success=True,
+            agents=generated_agents,
+            workflow_name=request.workflow_name,
+            workflow_created=workflow_created,
+            message=f"Successfully generated {len(generated_agents)} agents{' and workflow' if workflow_created else ''}"
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate multiple agents: {str(e)}"
+        )
+
+
+@router.put("/update-config", response_model=UpdateAgentConfigResponse)
+async def update_agent_config(
+    request: UpdateAgentConfigRequest,
+    current_user_id: UUID = Depends(get_current_user_id)
+):
+    """
+    Update the configuration of a generated agent project.
+    """
+    try:
+        agents_dir = get_agents_dir(str(current_user_id))
+        project_path = os.path.join(agents_dir, request.project_name)
+
+        if not os.path.exists(project_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project not found: {request.project_name}"
+            )
+
+        files_updated = []
+
+        # If specific file is provided, update only that file
+        if request.file_path:
+            file_path = os.path.join(project_path, request.file_path)
+            if not os.path.exists(file_path):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"File not found: {request.file_path}"
+                )
+
+            # Read current file content
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # Apply configuration updates (simple key-value replacement for now)
+            updated_content = content
+            for key, value in request.config_updates.items():
+                # Look for patterns like key = "old_value" or key: "old_value"
+                import re
+                pattern = rf'(\b{re.escape(key)}\s*[:=]\s*)["\']([^"\']*)["\']'
+                replacement = f'\\1"{value}"' if isinstance(value, str) else f'\\1{value}'
+                updated_content = re.sub(pattern, replacement, updated_content)
+
+            # Write back the updated content
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(updated_content)
+
+            files_updated.append(request.file_path)
+
+        else:
+            # Update all relevant config files
+            config_files = ['config.py', 'main.py', 'requirements.txt']
+
+            for config_file in config_files:
+                file_path = os.path.join(project_path, config_file)
+                if os.path.exists(file_path):
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+
+                    # Apply configuration updates
+                    updated_content = content
+                    for key, value in request.config_updates.items():
+                        import re
+                        pattern = rf'(\b{re.escape(key)}\s*[:=]\s*)["\']([^"\']*)["\']'
+                        replacement = f'\\1"{value}"' if isinstance(value, str) else f'\\1{value}'
+                        updated_content = re.sub(pattern, replacement, updated_content)
+
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        f.write(updated_content)
+
+                    files_updated.append(config_file)
+
+        return UpdateAgentConfigResponse(
+            success=True,
+            project_name=request.project_name,
+            files_updated=files_updated,
+            message=f"Successfully updated {len(files_updated)} files in {request.project_name}"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update agent configuration: {str(e)}"
+        )
+
+
+@router.post("/create-workflow", response_model=CreateWorkflowResponse)
+async def create_workflow_endpoint(
+    request: CreateWorkflowRequest,
+    current_user_id: UUID = Depends(get_current_user_id)
+):
+    """
+    Create a workflow that orchestrates multiple agent projects.
+    """
+    try:
+        # Validate that all agent projects exist
+        agents_dir = get_agents_dir(str(current_user_id))
+        missing_agents = []
+
+        for agent_name in request.agent_projects:
+            agent_path = os.path.join(agents_dir, agent_name)
+            if not os.path.exists(agent_path):
+                missing_agents.append(agent_name)
+
+        if missing_agents:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Agent projects not found: {', '.join(missing_agents)}"
+            )
+
+        # Create workflow steps
+        from src.schemas import WorkflowStep
+        steps = []
+        for i, agent_name in enumerate(request.agent_projects):
+            step = WorkflowStep(
+                step_id=f"step_{i+1}",
+                agent_id=agent_name,
+                name=f"Execute {agent_name}",
+                description=f"Execute the {agent_name} agent",
+                input_mapping={} if i == 0 else {"input": f"step_{i}.output"},
+                output_key=f"step_{i+1}_output",
+                config={"agent_project": agent_name}
+            )
+            steps.append(step)
+
+        # Create workflow in database
+        with get_db_connection(str(current_user_id)) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO workflows (
+                        name, description, steps, execution_mode,
+                        tags, metadata, status, owner_id
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        request.workflow_name,
+                        request.description or f"Workflow orchestrating agents: {', '.join(request.agent_projects)}",
+                        json.dumps([s.model_dump() for s in steps]),
+                        request.execution_mode,
+                        json.dumps(["generated", "agent-workflow"]),
+                        json.dumps({
+                            "agent_projects": request.agent_projects,
+                            "agent_count": len(request.agent_projects)
+                        }),
+                        "draft",
+                        str(current_user_id)
+                    )
+                )
+                result = cur.fetchone()
+                workflow_id = result['id']
+                conn.commit()
+
+        return CreateWorkflowResponse(
+            success=True,
+            workflow_name=request.workflow_name,
+            workflow_id=str(workflow_id),
+            agent_count=len(request.agent_projects),
+            message=f"Successfully created workflow '{request.workflow_name}' with {len(request.agent_projects)} agents"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create workflow: {str(e)}"
+        )
+
+
+@router.put("/update-workflow", response_model=UpdateWorkflowResponse)
+async def update_workflow_endpoint(
+    request: UpdateWorkflowRequest,
+    current_user_id: UUID = Depends(get_current_user_id)
+):
+    """
+    Update an existing workflow configuration.
+    """
+    try:
+        with get_db_connection(str(current_user_id)) as conn:
+            with conn.cursor() as cur:
+                # Check if workflow exists
+                cur.execute(
+                    "SELECT id FROM workflows WHERE name = %s AND owner_id = %s",
+                    (request.workflow_name, str(current_user_id))
+                )
+                existing = cur.fetchone()
+
+                if not existing:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Workflow not found: {request.workflow_name}"
+                    )
+
+                # Build update query
+                update_fields = []
+                update_values = []
+
+                for key, value in request.updates.items():
+                    if key in ['name', 'description', 'execution_mode', 'status']:
+                        update_fields.append(f"{key} = %s")
+                        update_values.append(value)
+                    elif key == 'steps':
+                        update_fields.append("steps = %s")
+                        update_values.append(json.dumps(value))
+                    elif key == 'tags':
+                        update_fields.append("tags = %s")
+                        update_values.append(json.dumps(value))
+                    elif key == 'metadata':
+                        update_fields.append("metadata = %s")
+                        update_values.append(json.dumps(value))
+
+                if not update_fields:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="No valid update fields provided"
+                    )
+
+                update_query = f"""
+                    UPDATE workflows
+                    SET {', '.join(update_fields)}, updated_at = NOW()
+                    WHERE name = %s AND owner_id = %s
+                """
+                update_values.extend([request.workflow_name, str(current_user_id)])
+
+                cur.execute(update_query, update_values)
+                conn.commit()
+
+        return UpdateWorkflowResponse(
+            success=True,
+            workflow_name=request.workflow_name,
+            message=f"Successfully updated workflow '{request.workflow_name}'"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update workflow: {str(e)}"
+        )
+
+
+@router.post("/generate-docker-artifacts", response_model=GenerateDockerArtifactsResponse)
+async def generate_docker_artifacts(
+    request: GenerateDockerArtifactsRequest,
+    current_user_id: UUID = Depends(get_current_user_id)
+):
+    """
+    Generate Docker artifacts for an agent project and show package structure.
+    """
+    try:
+        from aegis.generator.agent_packager import AgentPackager
+        from aegis.generator.agent_generator import GeneratedProject, GeneratedFile
+
+        agents_dir = get_agents_dir(str(current_user_id))
+        project_path = os.path.join(agents_dir, request.project_name)
+
+        if not os.path.exists(project_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project not found: {request.project_name}"
+            )
+
+        # Read project files
+        files = []
+        for root, dirs, filenames in os.walk(project_path):
+            dirs[:] = [d for d in dirs if not d.startswith('.') and d != '__pycache__' and d != '.venv']
+
+            for filename in filenames:
+                if not filename.startswith('.'):
+                    full_path = os.path.join(root, filename)
+                    rel_path = os.path.relpath(full_path, project_path)
+
+                    try:
+                        with open(full_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                            files.append(GeneratedFile(path=rel_path, content=content))
+                    except:
+                        pass
+
+        # Create project object
+        project = GeneratedProject(
+            name=request.project_name,
+            description=f"Agent project: {request.project_name}",
+            project_type="custom",
+            files=files,
+            dependencies=["litellm", "python-dotenv"]
+        )
+
+        # Generate package structure
+        structure_lines = []
+        for root, dirs, filenames in os.walk(project_path):
+            dirs[:] = [d for d in dirs if not d.startswith('.') and d != '__pycache__' and d != '.venv']
+            level = root.replace(project_path, '').count(os.sep)
+            indent = '  ' * level
+            folder_name = os.path.basename(root)
+            if folder_name:
+                structure_lines.append(f"{indent}{folder_name}/")
+
+            sub_indent = '  ' * (level + 1)
+            for filename in sorted(filenames):
+                if not filename.startswith('.'):
+                    structure_lines.append(f"{sub_indent}{filename}")
+
+        package_structure = "\n".join(structure_lines)
+
+        # Generate Docker artifacts
+        packager = AgentPackager()
+        artifacts = []
+
+        try:
+            # Copy Aegis framework to project directory for Docker builds
+            aegis_src_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(project_path))), "src", "aegis")
+            aegis_dest_path = os.path.join(project_path, "aegis")
+
+            if os.path.exists(aegis_src_path) and not os.path.exists(aegis_dest_path):
+                import shutil
+                shutil.copytree(aegis_src_path, aegis_dest_path)
+
+            # Generate Dockerfile
+            dockerfile_content = packager._create_dockerfile(project)
+            artifacts.append(DockerArtifactInfo(
+                filename="Dockerfile",
+                content=dockerfile_content,
+                description="Docker image definition for containerizing the agent"
+            ))
+
+            # Save Dockerfile to project directory
+            dockerfile_path = os.path.join(project_path, "Dockerfile")
+            with open(dockerfile_path, 'w', encoding='utf-8') as f:
+                f.write(dockerfile_content)
+
+            # Generate docker-compose if requested
+            if request.include_compose:
+                docker_compose_content = packager._create_docker_compose(project)
+                artifacts.append(DockerArtifactInfo(
+                    filename="docker-compose.yml",
+                    content=docker_compose_content,
+                    description="Docker Compose configuration for easy deployment"
+                ))
+
+                # Save docker-compose.yml to project directory
+                docker_compose_path = os.path.join(project_path, "docker-compose.yml")
+                with open(docker_compose_path, 'w', encoding='utf-8') as f:
+                    f.write(docker_compose_content)
+
+            # Generate .dockerignore
+            dockerignore_content = packager._create_dockerignore()
+            artifacts.append(DockerArtifactInfo(
+                filename=".dockerignore",
+                content=dockerignore_content,
+                description="Docker ignore file to exclude unnecessary files"
+            ))
+
+            # Save .dockerignore to project directory
+            dockerignore_path = os.path.join(project_path, ".dockerignore")
+            with open(dockerignore_path, 'w', encoding='utf-8') as f:
+                f.write(dockerignore_content)
+
+            # Clean up macOS resource fork files that cause xattr errors
+            import glob
+            for resource_fork in glob.glob(os.path.join(project_path, "._*")):
+                try:
+                    os.remove(resource_fork)
+                except Exception:
+                    pass  # Ignore errors removing resource forks
+
+        finally:
+            packager.cleanup()
+
+        return GenerateDockerArtifactsResponse(
+            success=True,
+            project_name=request.project_name,
+            artifacts=artifacts,
+            package_structure=package_structure,
+            message=f"Generated {len(artifacts)} Docker artifacts for {request.project_name}"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate Docker artifacts: {str(e)}"
+        )
+
+
+@router.post("/build-docker-image", response_model=BuildDockerImageResponse)
+async def build_docker_image(
+    request: BuildDockerImageRequest,
+    current_user_id: UUID = Depends(get_current_user_id)
+):
+    """
+    Build a Docker image for an agent project.
+    """
+    try:
+        agents_dir = get_agents_dir(str(current_user_id))
+        project_path = os.path.join(agents_dir, request.project_name)
+
+        if not os.path.exists(project_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project not found: {request.project_name}"
+            )
+
+        # Generate default image name if not provided
+        image_name = request.image_name or f"aegis-{request.project_name.lower()}:latest"
+
+        # Ensure Dockerfile exists
+        dockerfile_path = os.path.join(project_path, "Dockerfile")
+        if not os.path.exists(dockerfile_path):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Dockerfile not found. Generate Docker artifacts first."
+            )
+
+            # Clean up macOS resource fork files that cause xattr errors
+            import glob
+            for resource_fork in glob.glob(os.path.join(project_path, "._*")):
+                try:
+                    os.remove(resource_fork)
+                except Exception:
+                    pass  # Ignore errors removing resource forks
+
+        # Build Docker image
+        import subprocess
+        build_command = [
+            "docker", "build",
+            "-t", image_name,
+            "-f", dockerfile_path,
+            request.build_context if request.build_context != "." else project_path
+        ]
+
+        try:
+            result = subprocess.run(
+                build_command,
+                cwd=project_path,
+                capture_output=True,
+                text=True,
+                timeout=600  # 10 minutes timeout
+            )
+
+            if result.returncode == 0:
+                return BuildDockerImageResponse(
+                    success=True,
+                    project_name=request.project_name,
+                    image_name=image_name,
+                    build_output=result.stdout,
+                    message=f"Successfully built Docker image: {image_name}"
+                )
+            else:
+                return BuildDockerImageResponse(
+                    success=False,
+                    project_name=request.project_name,
+                    image_name=image_name,
+                    build_output=result.stdout,
+                    error=result.stderr,
+                    message=f"Failed to build Docker image: {result.stderr}"
+                )
+
+        except subprocess.TimeoutExpired:
+            raise HTTPException(
+                status_code=status.HTTP_408_REQUEST_TIMEOUT,
+                detail="Docker build timed out after 10 minutes"
+            )
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Docker command not found. Please ensure Docker is installed."
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to build Docker image: {str(e)}"
+        )
+
+
+@router.post("/deploy-docker", response_model=DeployDockerResponse)
+async def deploy_docker_container(
+    request: DeployDockerRequest,
+    current_user_id: UUID = Depends(get_current_user_id)
+):
+    """
+    Deploy an agent project as a Docker container.
+    """
+    try:
+        agents_dir = get_agents_dir(str(current_user_id))
+        project_path = os.path.join(agents_dir, request.project_name)
+
+        if not os.path.exists(project_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project not found: {request.project_name}"
+            )
+
+        # Generate container name if not provided
+        container_name = request.container_name or f"aegis-{request.project_name.lower()}"
+
+        # Check if docker-compose.yml exists
+        compose_path = os.path.join(project_path, "docker-compose.yml")
+        if os.path.exists(compose_path):
+            # Ensure .env.example exists, create from .env if needed
+            env_example_path = os.path.join(project_path, ".env.example")
+            env_path = os.path.join(project_path, ".env")
+            if not os.path.exists(env_example_path) and os.path.exists(env_path):
+                import shutil
+                shutil.copy(env_path, env_example_path)
+                pass  # .env.example created
+            elif not os.path.exists(env_example_path):
+                # Create a minimal .env.example
+                with open(env_example_path, 'w') as f:
+                    f.write("# Environment variables for the agent\n")
+                    f.write("# Copy this file to .env and fill in your API keys\n")
+                    f.write("OPENAI_API_KEY=\n")
+                    f.write("ANTHROPIC_API_KEY=\n")
+                    f.write("GEMINI_API_KEY=\n")
+                    f.write("LOG_LEVEL=INFO\n")
+
+            # Use docker-compose
+            deploy_command = ["docker-compose", "up", "-d", "--build"]
+            # Add env_file if provided and exists, otherwise use .env.example if it exists
+            if request.env_file and os.path.exists(request.env_file):
+                deploy_command.extend(["--env-file", request.env_file])
+            elif os.path.exists(env_example_path):
+                deploy_command.extend(["--env-file", env_example_path])
+
+            try:
+                result = subprocess.run(
+                    deploy_command,
+                    cwd=project_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=120  # 2 minutes timeout
+                )
+
+                if result.returncode == 0:
+                    # Get container ID
+                    container_id = None
+                    try:
+                        inspect_result = subprocess.run(
+                            ["docker", "ps", "-q", "-f", f"name={container_name}"],
+                            capture_output=True,
+                            text=True
+                        )
+                        container_id = inspect_result.stdout.strip()
+                    except:
+                        pass
+
+                    return DeployDockerResponse(
+                        success=True,
+                        project_name=request.project_name,
+                        container_name=container_name,
+                        container_id=container_id,
+                        deployment_output=result.stdout,
+                        message=f"Successfully deployed Docker container: {container_name}"
+                    )
+                else:
+                    return DeployDockerResponse(
+                        success=False,
+                        project_name=request.project_name,
+                        container_name=container_name,
+                        deployment_output=result.stdout,
+                        error=result.stderr,
+                        message=f"Failed to deploy Docker container: {result.stderr}"
+                    )
+
+            except subprocess.TimeoutExpired:
+                raise HTTPException(
+                    status_code=status.HTTP_408_REQUEST_TIMEOUT,
+                    detail="Docker deployment timed out"
+                )
+        else:
+            # Use docker run directly
+            image_name = f"aegis-{request.project_name.lower()}:latest"
+            run_command = [
+                "docker", "run", "-d",
+                "--name", container_name
+            ]
+
+            if request.port_mapping:
+                run_command.extend(["-p", request.port_mapping])
+
+            if request.env_file:
+                run_command.extend(["--env-file", request.env_file])
+
+            run_command.append(image_name)
+
+            try:
+                result = subprocess.run(
+                    run_command,
+                    cwd=project_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+
+                if result.returncode == 0:
+                    container_id = result.stdout.strip()
+                    return DeployDockerResponse(
+                        success=True,
+                        project_name=request.project_name,
+                        container_name=container_name,
+                        container_id=container_id,
+                        deployment_output=result.stdout,
+                        message=f"Successfully deployed Docker container: {container_name}"
+                    )
+                else:
+                    return DeployDockerResponse(
+                        success=False,
+                        project_name=request.project_name,
+                        container_name=container_name,
+                        deployment_output=result.stdout,
+                        error=result.stderr,
+                        message=f"Failed to deploy Docker container: {result.stderr}"
+                    )
+
+            except subprocess.TimeoutExpired:
+                raise HTTPException(
+                    status_code=status.HTTP_408_REQUEST_TIMEOUT,
+                    detail="Docker deployment timed out"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to deploy Docker container: {str(e)}"
         )
 
 

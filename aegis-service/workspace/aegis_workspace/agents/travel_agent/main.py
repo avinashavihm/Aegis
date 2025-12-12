@@ -34,7 +34,9 @@ def main():
     try:
         # Execute the main task
         result = main_agent.execute_task(args.task)
-        print(f"Final Result: {result}")
+        print(f"Final Result (first 500 chars): {result[:500]}...")
+        if len(result) > 500:
+            print(f"... (truncated, total length: {len(result)})")
         logger.info("Travel Agent Application finished successfully.")
 
     except Exception as e:

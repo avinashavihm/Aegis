@@ -1,18 +1,18 @@
 import logging
-from aegis.types import Agent
 from agents.planning_agent import PlanningAgent
 from agents.research_agent import ResearchAgent
 from agents.booking_agent import BookingAgent
 from utils.helpers import retry
 from config import Config
 
-class MainAgent(Agent):
+class MainAgent:
     """
     The main agent responsible for orchestrating the travel planning process.
     """
 
     def __init__(self, config: Config, name="MainAgent", description="Orchestrates travel planning"):
-        super().__init__(name=name, description=description)
+        self.name = name
+        self.description = description
         self.config = config
         self.planning_agent = PlanningAgent(config=config)
         self.research_agent = ResearchAgent(config=config)
